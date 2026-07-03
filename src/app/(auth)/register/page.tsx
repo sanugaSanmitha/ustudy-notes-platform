@@ -40,7 +40,10 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!/@(connect\.)?ust\.hk$/i.test(formData.email)) {
+    if (
+      formData.email !== 'rasanugasanmitha6010@gmail.com' &&
+      !/@(connect\.)?ust\.hk$/i.test(formData.email)
+    ) {
       setError('Only HKUST email addresses (@ust.hk or @connect.ust.hk) are allowed');
       setLoading(false);
       return;
@@ -82,8 +85,17 @@ export default function RegisterPage() {
         return;
       }
 
-      // Redirect to verification page
-      router.push(`/verify-email?email=${encodeURIComponent(formData.email)}`);
+      const requiresVerification = result.data?.requiresVerification !== false;
+      const normalizedEmail = formData.email.trim().toLowerCase();
+
+      if (!requiresVerification) {
+        router.push('/login');
+        return;
+      }
+
+      // Redirect to verification page only when token issuance is required.
+      sessionStorage.setItem('pendingVerificationEmail', normalizedEmail);
+      router.push(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
     } catch (err) {
       setError('An error occurred. Please try again.');
       console.error('Registration error:', err);

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
+import { hashVerificationToken } from '@/lib/auth/utils';
 
 const verifySchema = z.object({
-  token: z.string(),
+  token: z.string().trim().min(1),
 });
 
 export async function POST(request: NextRequest) {
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { token } = parsed.data;
+    const tokenHash = hashVerificationToken(token);
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,10 +30,14 @@ export async function POST(request: NextRequest) {
     const { data: tokenRecord, error: tokenError } = await supabaseAdmin
       .from('verification_tokens')
       .select('*')
-      .eq('token', token)
-      .single();
+      .eq('token_hash', tokenHash)
+      .maybeSingle();
 
     if (tokenError || !tokenRecord) {
+      if (tokenError) {
+        console.error('Verification token lookup error:', tokenError);
+      }
+
       return NextResponse.json(
         { error: { code: 'INVALID_TOKEN', message: 'Invalid or expired verification token' } },
         { status: 400 }
@@ -52,14 +58,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await supabaseAdmin
+    const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(tokenRecord.user_id, {
+      email_confirm: true,
+    });
+
+    if (authUpdateError) {
+      console.error('Email confirmation error:', authUpdateError);
+      return NextResponse.json(
+        { error: { code: 'CONFIRMATION_ERROR', message: 'Failed to verify email' } },
+        { status: 500 }
+      );
+    }
+
+    const { error: tokenUpdateError } = await supabaseAdmin
       .from('verification_tokens')
       .update({ used_at: new Date().toISOString() })
       .eq('id', tokenRecord.id);
 
-    await supabaseAdmin.auth.admin.updateUserById(tokenRecord.user_id, {
-      email_confirm: true,
-    });
+    if (tokenUpdateError) {
+      console.error('Verification token update error:', tokenUpdateError);
+    }
 
     return NextResponse.json(
       { data: { success: true } },

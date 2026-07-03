@@ -1,23 +1,28 @@
-
-import { createClient } from '@/lib/supabase/server';
-import type { AuthUser } from '@/types/auth';
+import { createClient } from "@/lib/supabase/server";
+import type { AuthUser } from "@/types/auth";
 
 export async function getSession(): Promise<AuthUser | null> {
   try {
     const supabase = createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
 
-    if (!session) return null;
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return null;
+    }
 
     const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', session.user.id)
+      .from("users")
+      .select("*")
+      .eq("id", user.id)
       .single();
 
-    if (error || !data) return null;
+    if (error || !data) {
+      return null;
+    }
 
     return {
       id: data.id,

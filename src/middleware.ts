@@ -1,5 +1,19 @@
+
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+
+const PROTECTED_PATHS = [
+  '/profile',
+  '/cart',
+  '/checkout',
+  '/orders',
+  '/wallet',
+  '/grades',
+  '/notes/upload',
+  '/admin',
+];
+
+const AUTH_PATHS = ['/register', '/login', '/verify-email'];
 
 export async function middleware(request: NextRequest) {
   const supabaseResponse = NextResponse.next({
@@ -23,64 +37,40 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session if needed
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protect routes that require authentication
-  const protectedPaths = [
-    '/en/profile',
-    '/en/cart',
-    '/en/checkout',
-    '/en/orders',
-    '/en/wallet',
-    '/en/grades',
-    '/en/notes/upload',
-    '/en/admin',
-    '/zh-Hant/profile',
-    '/zh-Hant/cart',
-    '/zh-Hant/checkout',
-    '/zh-Hant/orders',
-    '/zh-Hant/wallet',
-    '/zh-Hant/grades',
-    '/zh-Hant/notes/upload',
-    '/zh-Hant/admin',
-  ];
+  const pathname = request.nextUrl.pathname;
 
-  const isProtectedPath = protectedPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
+  const isProtectedPath = PROTECTED_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
 
   if (isProtectedPath && !user) {
-    // Redirect to login
-    return NextResponse.redirect(new URL('/login', request.url));
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('next', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // Prevent authenticated users from accessing auth pages
-  const authPaths = [
-    '/register',
-    '/login',
-    '/en/auth/register',
-    '/en/auth/login',
-    '/zh-Hant/auth/register',
-    '/zh-Hant/auth/login',
-  ];
-
-  const isAuthPath = authPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
+  const isAuthPath = AUTH_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
 
   if (isAuthPath && user) {
-    // Redirect to homepage
-    return NextResponse.redirect(new URL('/', request.url));
+    const isVerifyEmailPage = pathname === '/verify-email' || pathname.startsWith('/verify-email/');
+    const emailConfirmed = Boolean(user.email_confirmed_at);
+
+    if (isVerifyEmailPage && !emailConfirmed) {
+      return supabaseResponse;
+    }
+
+    return NextResponse.redirect(new URL('/profile', request.url));
   }
 
   return supabaseResponse;
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|public).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|public).*)'],
 };

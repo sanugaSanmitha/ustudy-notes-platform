@@ -3,7 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { sendVerificationEmail } from '@/lib/email/resend';
-import { isValidEmail, isValidPassword, generateVerificationToken } from '@/lib/auth/utils';
+import {
+  isValidEmail,
+  isValidPassword,
+} from '@/lib/auth/utils';
+import {
+  replaceVerificationToken,
+  resolveUserForVerification,
+} from '@/lib/auth/verification';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
@@ -12,16 +19,36 @@ const registerSchema = z.object({
   password: z.string().min(8),
 });
 
-// Rate limit: 5 registrations per IP per hour
+function registrationResponse(options?: { message?: string; tokenIssuedAt?: string; requiresVerification?: boolean }) {
+  return {
+    data: {
+      success: true,
+      message: options?.message || 'If this email is eligible, we sent a verification email.',
+      requiresVerification: options?.requiresVerification ?? true,
+      ...(options?.tokenIssuedAt ? { tokenIssuedAt: options.tokenIssuedAt } : {}),
+    },
+  };
+}
+
+// Rate limit: 5 registrations per IP/email per hour
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
   limiter: Ratelimit.slidingWindow(100, '1 h'),
 });
 
+function getClientIp(request: NextRequest) {
+  return (
+    request.headers.get('x-vercel-forwarded-for') ||
+    request.headers.get('x-real-ip') ||
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    '127.0.0.1'
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Rate limiting
-    const ip = request.headers.get('x-forwarded-for') ?? '127.0.0.1';
+    const ip = getClientIp(request);
     const { success } = await ratelimit.limit(`register:${ip}`);
 
     if (!success) {
@@ -43,9 +70,19 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password } = parsed.data;
+    const normalizedEmail = email.toLowerCase();
+    const isDev = process.env.NODE_ENV !== 'production';
+
+    const { success: emailLimitSuccess } = await ratelimit.limit(`register-email:${normalizedEmail}`);
+    if (!emailLimitSuccess) {
+      return NextResponse.json(
+        { error: { code: 'RATE_LIMIT', message: 'Too many registration attempts. Try again later.' } },
+        { status: 429 }
+      );
+    }
 
     // Check HKUST email domain
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(normalizedEmail)) {
       return NextResponse.json(
         { error: { code: 'INVALID_DOMAIN', message: 'Only @ust.hk or @connect.ust.hk email addresses are allowed' } },
         { status: 400 }
@@ -67,30 +104,123 @@ export async function POST(request: NextRequest) {
     );
 
     // Check if email already exists
-    const { data: existingUser } = await supabaseAdmin
+    const { data: existingUser, error: existingUserError } = await supabaseAdmin
       .from('users')
       .select('id')
-      .eq('email', email)
-      .single();
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (existingUserError) {
+      console.error('Existing user lookup error:', existingUserError);
+      return NextResponse.json(
+        { error: { code: 'USER_LOOKUP_ERROR', message: 'Failed to check existing user' } },
+        { status: 500 }
+      );
+    }
 
     if (existingUser) {
+      const resolved = await resolveUserForVerification(supabaseAdmin, normalizedEmail);
+
+      if (resolved && !resolved.isVerified) {
+        const tokenResult = await replaceVerificationToken(supabaseAdmin, resolved.userId);
+
+        if (tokenResult) {
+          const tokenIssuedAt = new Date().toISOString();
+          const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${tokenResult.token}`;
+
+          if (isDev) {
+            console.log(
+              `\n[DEV] Verification link for ${normalizedEmail}:\n${verificationUrl}\n`
+            );
+          }
+
+          const emailResult = await sendVerificationEmail(normalizedEmail, tokenResult.token);
+          if (!emailResult.success) {
+            console.error('Email send failed:', emailResult.error);
+          }
+
+          return NextResponse.json(
+            registrationResponse({ tokenIssuedAt }),
+            { status: 200 }
+          );
+        }
+
+        return NextResponse.json(
+          { error: { code: 'TOKEN_ERROR', message: 'Failed to create verification token' } },
+          { status: 500 }
+        );
+      }
+
       return NextResponse.json(
-        { error: { code: 'EMAIL_EXISTS', message: 'This email is already registered' } },
-        { status: 409 }
+        registrationResponse({
+          message: isDev
+            ? 'This email is already verified. Log in instead.'
+            : undefined,
+          requiresVerification: false,
+        }),
+        { status: 200 }
       );
     }
 
     // Create auth user
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
+      email: normalizedEmail,
       password,
       email_confirm: false,
     });
 
     if (authError || !authData.user) {
+      const isDuplicate =
+        authError?.message?.toLowerCase().includes('already') ||
+        authError?.status === 422;
+
+      if (isDuplicate) {
+        const resolved = await resolveUserForVerification(supabaseAdmin, normalizedEmail);
+
+        if (resolved && !resolved.isVerified) {
+          const tokenResult = await replaceVerificationToken(supabaseAdmin, resolved.userId);
+
+          if (tokenResult) {
+            const tokenIssuedAt = new Date().toISOString();
+            const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${tokenResult.token}`;
+
+            if (isDev) {
+              console.log(
+                `\n[DEV] Verification link for ${normalizedEmail}:\n${verificationUrl}\n`
+              );
+            }
+
+            const emailResult = await sendVerificationEmail(normalizedEmail, tokenResult.token);
+            if (!emailResult.success) {
+              console.error('Email send failed:', emailResult.error);
+            }
+
+            return NextResponse.json(
+              registrationResponse({ tokenIssuedAt }),
+              { status: 200 }
+            );
+          }
+
+          return NextResponse.json(
+            { error: { code: 'TOKEN_ERROR', message: 'Failed to create verification token' } },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json(
+          registrationResponse({
+            message: isDev
+              ? 'This email is already verified. Log in instead.'
+              : undefined,
+            requiresVerification: false,
+          }),
+          { status: 200 }
+        );
+      }
+
       console.error('Auth error:', authError);
       return NextResponse.json(
-        { error: { code: 'AUTH_ERROR', message: 'Failed to create account' } },
+        { error: { code: 'AUTH_CREATE_ERROR', message: 'Failed to create auth user' } },
         { status: 500 }
       );
     }
@@ -102,7 +232,7 @@ export async function POST(request: NextRequest) {
       .from('users')
       .insert({
         id: userId,
-        email,
+        email: normalizedEmail,
       });
 
     if (userError) {
@@ -114,32 +244,38 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate verification token
-    const verificationToken = generateVerificationToken();
-    
-    // Store token in a temp table (verification_tokens)
-    // For now, we'll send email with the token and validate later
-    const { error: tokenError } = await supabaseAdmin
-      .from('verification_tokens')
-      .insert({
-        user_id: userId,
-        token: verificationToken,
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      });
+    const tokenResult = await replaceVerificationToken(supabaseAdmin, userId);
 
-    if (tokenError) {
-      console.error('Token error:', tokenError);
+    if (!tokenResult) {
+      await supabaseAdmin.auth.admin.deleteUser(userId);
+
+      return NextResponse.json(
+        { error: { code: 'TOKEN_ERROR', message: 'Failed to create verification token' } },
+        { status: 500 }
+      );
     }
 
-    // Send verification email
-    const emailResult = await sendVerificationEmail(email, verificationToken);
+    const verificationToken = tokenResult.token;
+    const tokenIssuedAt = new Date().toISOString();
+    const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${verificationToken}`;
+
+    // Dev helper: print the real verification link so local testing does not
+    // depend on email delivery.
+    if (isDev) {
+      console.log(
+        `\n[DEV] Verification link for ${normalizedEmail}:\n${verificationUrl}\n`
+      );
+    }
+
+    const emailResult = await sendVerificationEmail(normalizedEmail, verificationToken);
 
     if (!emailResult.success) {
       console.error('Email send failed:', emailResult.error);
-      // Don't fail registration, user can resend email
+      // Don't fail registration, user can resend email.
     }
 
     return NextResponse.json(
-      { data: { userId, email } },
+      registrationResponse({ tokenIssuedAt }),
       { status: 201 }
     );
   } catch (error) {

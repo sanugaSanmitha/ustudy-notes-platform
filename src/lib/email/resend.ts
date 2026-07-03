@@ -1,30 +1,16 @@
-
 import { Resend } from 'resend';
 
-function getResendClient() {
-  const apiKey = process.env.RESEND_API_KEY;
-
-  if (!apiKey) {
-    return null;
-  }
-
-  return new Resend(apiKey);
-}
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendVerificationEmail(
   email: string,
   token: string
 ) {
   const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`;
-  const resend = getResendClient();
-
-  if (!resend) {
-    return { success: false, error: 'Missing RESEND_API_KEY' };
-  }
 
   try {
-    await resend.emails.send({
-      from: 'noreply@hkust-notes.com',
+    const { data, error } = await resend.emails.send({
+      from: 'onboarding@resend.dev',
       to: email,
       subject: 'Verify Your HKUST Notes Account',
       html: `
@@ -46,7 +32,12 @@ export async function sendVerificationEmail(
       `,
     });
 
-    return { success: true };
+    if (error) {
+      console.error('Email send error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, data };
   } catch (error) {
     console.error('Email send error:', error);
     return { success: false, error };
@@ -57,15 +48,9 @@ export async function sendPasswordResetEmail(
   email: string,
   resetUrl: string
 ) {
-  const resend = getResendClient();
-
-  if (!resend) {
-    return { success: false, error: 'Missing RESEND_API_KEY' };
-  }
-
   try {
     await resend.emails.send({
-      from: 'noreply@hkust-notes.com',
+      from: 'onboarding@resend.dev',
       to: email,
       subject: 'Reset Your HKUST Notes Password',
       html: `

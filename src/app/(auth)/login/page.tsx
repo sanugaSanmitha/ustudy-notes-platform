@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,22 +38,33 @@ export default function LoginPage() {
     }
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+      const supabase = createClient();
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
       });
 
-      const result = await response.json();
+      if (signInError) {
+        const normalizedEmail = formData.email.trim().toLowerCase();
+        const needsVerification = signInError.message.includes('Email not confirmed');
 
-      if (!response.ok) {
-        setError(result.error?.message || 'Login failed');
+        setError(
+          needsVerification
+            ? 'Please verify your email before logging in.'
+            : 'Invalid email or password'
+        );
+
+        if (needsVerification && normalizedEmail) {
+          sessionStorage.setItem('pendingVerificationEmail', normalizedEmail);
+        }
+
         setLoading(false);
         return;
       }
 
-      // Redirect to homepage
-      router.push('/');
+      router.push('/profile');
+      router.refresh();
     } catch (err) {
       setError('An error occurred. Please try again.');
       console.error('Login error:', err);
@@ -69,8 +81,16 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg space-y-2">
             <p className="text-red-700 text-sm">{error}</p>
+            {error.includes('verify your email') && formData.email && (
+              <Link
+                href={`/verify-email?email=${encodeURIComponent(formData.email.trim().toLowerCase())}`}
+                className="text-sm text-blue-600 hover:underline font-medium"
+              >
+                Resend verification email
+              </Link>
+            )}
           </div>
         )}
 
@@ -85,21 +105,16 @@ export default function LoginPage() {
               name="email"
               value={formData.email}
               onChange={handleChange}
-              placeholder="your.email@ust.hk"
+              placeholder="your.email@connect.ust.hk"
               className="w-full"
               disabled={loading}
             />
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <Label htmlFor="password" className="block text-sm font-medium text-slate-700">
-                Password
-              </Label>
-              <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline">
-                Forgot password?
-              </Link>
-            </div>
+            <Label htmlFor="password" className="block text-sm font-medium text-slate-700">
+              Password
+            </Label>
             <Input
               id="password"
               type="password"

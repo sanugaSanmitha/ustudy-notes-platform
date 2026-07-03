@@ -1,9 +1,12 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
+import { adminClient } from '@/lib/supabase/admin';
 import { sendVerificationEmail } from '@/lib/email/resend';
-import { generateVerificationToken } from '@/lib/auth/utils';
+import { isValidEmail } from '@/lib/auth/utils';
+import {
+  replaceVerificationToken,
+  resolveUserForVerification,
+} from '@/lib/auth/verification';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
@@ -13,8 +16,18 @@ const schema = z.object({
 
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(3, '1 d'),
+  limiter: Ratelimit.slidingWindow(100, '1 d'),
 });
+
+function resendResponse(message?: string, options?: { tokenIssuedAt?: string }) {
+  return {
+    data: {
+      success: true,
+      message: message || 'If this email is eligible, we sent a verification email.',
+      ...(options?.tokenIssuedAt ? { tokenIssuedAt: options.tokenIssuedAt } : {}),
+    },
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,9 +41,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email } = parsed.data;
+    const email = parsed.data.email.toLowerCase();
+    const isDev = process.env.NODE_ENV !== 'production';
 
-    // Rate limit per user
+    if (!isValidEmail(email)) {
+      return NextResponse.json(resendResponse(), { status: 200 });
+    }
+
     const { success } = await ratelimit.limit(`resend:${email}`);
     if (!success) {
       return NextResponse.json(
@@ -39,67 +56,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const resolved = await resolveUserForVerification(adminClient, email);
 
-    // Find user
-    const { data: user } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('email', email)
-      .single();
-
-    if (!user) {
+    if (!resolved) {
+      if (isDev) {
+        console.log(`[DEV] Resend skipped: no auth/public user found for ${email}`);
+      }
       return NextResponse.json(
-        { error: { code: 'USER_NOT_FOUND', message: 'User not found' } },
-        { status: 404 }
+        resendResponse(isDev ? 'No account was found for that email in development.' : undefined),
+        { status: 200 }
       );
     }
 
-    // Check if already verified
-    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(user.id);
-    if (authUser?.user?.email_confirmed_at) {
+    if (resolved.isVerified) {
+      if (isDev) {
+        console.log(`[DEV] Resend skipped: ${email} is already verified`);
+      }
       return NextResponse.json(
-        { error: { code: 'ALREADY_VERIFIED', message: 'This email is already verified' } },
-        { status: 400 }
+        resendResponse(isDev ? 'This email is already verified. Log in instead.' : undefined),
+        { status: 200 }
       );
     }
 
-    // Generate new token
-    const newToken = generateVerificationToken();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const tokenResult = await replaceVerificationToken(adminClient, resolved.userId);
 
-    // Delete old tokens
-    await supabaseAdmin
-      .from('verification_tokens')
-      .delete()
-      .eq('user_id', user.id)
-      .is('used_at', null);
-
-    // Create new token
-    const { error: tokenError } = await supabaseAdmin
-      .from('verification_tokens')
-      .insert({
-        user_id: user.id,
-        token: newToken,
-        expires_at: expiresAt,
-      });
-
-    if (tokenError) {
-      console.error('Token creation error:', tokenError);
+    if (!tokenResult) {
       return NextResponse.json(
         { error: { code: 'TOKEN_ERROR', message: 'Failed to create verification token' } },
         { status: 500 }
       );
     }
 
-    // Send email
-    await sendVerificationEmail(email, newToken);
+    const tokenIssuedAt = new Date().toISOString();
+    const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${tokenResult.token}`;
+
+    if (isDev) {
+      console.log(
+        `\n[DEV] Verification link for ${email}:\n${verificationUrl}\n`
+      );
+    }
+
+    const emailResult = await sendVerificationEmail(email, tokenResult.token);
+
+    if (!emailResult.success) {
+      console.error('Verification email resend failed:', emailResult.error);
+
+      if (isDev) {
+        return NextResponse.json(
+          resendResponse(
+            'Verification token created. Email delivery failed in dev. Use the verification link printed in the server console.',
+            { tokenIssuedAt }
+          ),
+          { status: 200 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: { code: 'EMAIL_SEND_ERROR', message: 'Failed to send verification email' } },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json(
-      { data: { success: true, message: 'Verification email sent' } },
+      resendResponse(undefined, { tokenIssuedAt }),
       { status: 200 }
     );
   } catch (error) {
