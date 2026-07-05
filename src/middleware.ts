@@ -52,6 +52,20 @@ async function getUserRoles(
 }
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isCompleteProfilePath = pathname === '/complete-profile' || pathname.startsWith('/complete-profile/');
+  const isProtectedPath = PROTECTED_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+  const isAuthPath = AUTH_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+
+  // Skip Supabase/session work for routes that do not need auth enforcement.
+  if (!isProtectedPath && !isAuthPath && !isCompleteProfilePath) {
+    return NextResponse.next();
+  }
+
   const supabaseResponse = NextResponse.next({
     request,
   });
@@ -77,13 +91,6 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
-  const isCompleteProfilePath = pathname === '/complete-profile' || pathname.startsWith('/complete-profile/');
-
-  const isProtectedPath = PROTECTED_PATHS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`)
-  );
-
   if (isProtectedPath && !user) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', pathname);
@@ -92,10 +99,6 @@ export async function middleware(request: NextRequest) {
 
   const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
   const isSupportPath = pathname === '/support' || pathname.startsWith('/support/');
-
-  const isAuthPath = AUTH_PATHS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`)
-  );
 
   let isProfileCompleted = false;
   let userRoles: AppRole[] = [];
@@ -155,5 +158,19 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|public).*)'],
+  matcher: [
+    '/complete-profile/:path*',
+    '/profile/:path*',
+    '/cart/:path*',
+    '/checkout/:path*',
+    '/orders/:path*',
+    '/wallet/:path*',
+    '/grades/:path*',
+    '/notes/upload/:path*',
+    '/admin/:path*',
+    '/support/:path*',
+    '/register/:path*',
+    '/login/:path*',
+    '/verify-email/:path*',
+  ],
 };
