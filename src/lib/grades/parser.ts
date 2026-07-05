@@ -1,6 +1,3 @@
-import { PDFParse } from 'pdf-parse';
-import { createWorker } from 'tesseract.js';
-
 export type ParsedGradeCourse = {
   courseCode: string;
   courseName: string;
@@ -136,8 +133,6 @@ export type TranscriptPipelineResult = {
 const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const VALID_GRADES = new Set(['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D', 'F', 'P', 'PP', 'T', 'I', 'W', 'AU']);
 const TARGET_EXTRACTED_GRADES = new Set(['A+', 'A', 'A-', 'B+', 'B', 'B-']);
-const EDITING_TOOLS = ['adobe', 'acrobat', 'wps', 'smallpdf'];
-const BROWSER_TOOLS = ['chrome', 'edge', 'safari'];
 const SPECIAL_COURSE_CODES = new Set(['COREBROAD', 'OTHRFREE']);
 const COURSE_CODE_PATTERN = /^[A-Z]{4}[0-9]{4}[A-Z]?$/;
 const CORRUPTED_TEXT_MARKERS = ['/FILTER', '/FLATEDECODE', 'STREAM', 'ENDSTREAM', 'XREF', 'OBJ'];
@@ -239,132 +234,6 @@ function sanitizeParsedCourses(courses: ParsedGradeCourse[]): ParsedGradeCourse[
   return sanitized;
 }
 
-async function extractTextWithImageOcr(buffer: Buffer): Promise<string> {
-  const parser = new PDFParse({ data: buffer });
-  let worker: Awaited<ReturnType<typeof createWorker>> | null = null;
-
-  const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, step: string): Promise<T> => {
-    let timeoutHandle: NodeJS.Timeout | null = null;
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<T>((_, reject) => {
-          timeoutHandle = setTimeout(() => {
-            reject(new Error(`OCR timeout: ${step}`));
-          }, timeoutMs);
-        }),
-      ]);
-    } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-    }
-  };
-
-  try {
-    const screenshots = await withTimeout(
-      parser.getScreenshot({
-        partial: [1, 2],
-        scale: 1.4,
-        imageDataUrl: false,
-      }),
-      12000,
-      'render pages'
-    );
-    const pages = Array.isArray(screenshots.pages) ? screenshots.pages : [];
-    if (pages.length === 0) {
-      return '';
-    }
-
-    worker = await withTimeout(createWorker('eng'), 12000, 'start OCR worker');
-    const textChunks: string[] = [];
-
-    for (const page of pages) {
-      const recognized = await withTimeout(worker.recognize(Buffer.from(page.data)), 12000, 'recognize page');
-      const chunk = recognized?.data?.text?.trim() || '';
-      if (chunk) {
-        textChunks.push(chunk);
-      }
-    }
-
-    return normalizeText(textChunks.join('\n'));
-  } catch (error) {
-    console.error('Transcript OCR fallback error:', error);
-    return '';
-  } finally {
-    if (worker) {
-      await worker.terminate();
-    }
-    await parser.destroy();
-  }
-}
-
-async function extractTextWithGeminiImageOcr(buffer: Buffer): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return '';
-  }
-
-  const parser = new PDFParse({ data: buffer });
-  try {
-    const screenshots = await parser.getScreenshot({
-      partial: [1, 2, 3, 4],
-      desiredWidth: 1800,
-      imageDataUrl: false,
-    });
-    const imageParts = (screenshots.pages || [])
-      .slice(0, 4)
-      .map((page) => ({
-        inline_data: {
-          mime_type: 'image/png',
-          data: Buffer.from(page.data).toString('base64'),
-        },
-      }));
-
-    if (imageParts.length === 0) {
-      return '';
-    }
-
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent?key=${apiKey}`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text:
-                  'OCR these transcript screenshots and return plain text only. Keep course codes and grades exactly, preserve line breaks where possible.',
-              },
-              ...imageParts,
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      console.error('Gemini OCR request failed:', response.status, body);
-      return '';
-    }
-
-    const payload = (await response.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = payload?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return normalizeText(text);
-  } catch (error) {
-    console.error('Gemini OCR fallback error:', error);
-    return '';
-  } finally {
-    await parser.destroy();
-  }
-}
 
 function extractJsonText(rawModelText: string): string {
   const fenced = rawModelText.match(/```json\s*([\s\S]*?)\s*```/i);
@@ -391,41 +260,6 @@ function hasNameMismatch(verifiedName: string | null, transcriptName: string | n
   return !(left === right || left.includes(right) || right.includes(left));
 }
 
-function detectSourceTool(metadata: TranscriptPdfMetadata): string | null {
-  const blob = `${metadata.producer || ''} ${metadata.creator || ''}`.toLowerCase();
-  const browserMatch = BROWSER_TOOLS.find((tool) => blob.includes(tool));
-  if (browserMatch) {
-    return browserMatch;
-  }
-  const editingMatch = EDITING_TOOLS.find((tool) => blob.includes(tool));
-  if (editingMatch) {
-    return editingMatch;
-  }
-  return null;
-}
-
-function parseMetadataInfo(info: unknown, fingerprints: unknown): TranscriptPdfMetadata {
-  const dictionary = (info as Record<string, unknown>) || {};
-  const producer = typeof dictionary.Producer === 'string' ? dictionary.Producer : null;
-  const creator = typeof dictionary.Creator === 'string' ? dictionary.Creator : null;
-  const title = typeof dictionary.Title === 'string' ? dictionary.Title : null;
-  const author = typeof dictionary.Author === 'string' ? dictionary.Author : null;
-  const firstFingerprint =
-    Array.isArray(fingerprints) && typeof fingerprints[0] === 'string' ? fingerprints[0] : null;
-  const provisional: TranscriptPdfMetadata = {
-    producer,
-    creator,
-    title,
-    author,
-    fileFingerprint: firstFingerprint,
-    sourceTool: null,
-    editedSignal: false,
-  };
-  const sourceTool = detectSourceTool(provisional);
-  provisional.sourceTool = sourceTool;
-  provisional.editedSignal = sourceTool ? EDITING_TOOLS.includes(sourceTool) : false;
-  return provisional;
-}
 
 function toBoolean(value: unknown, fallback = false): boolean {
   return typeof value === 'boolean' ? value : fallback;
@@ -905,7 +739,6 @@ async function extractTranscriptWithGemini(transcriptText: string, buffer?: Buff
     return null;
   }
 
-  const imagePrompt = buildGeminiPrompt(transcriptText, 6000);
   const pdfPrompt = buildGeminiPrompt(transcriptText, 8000);
   const textPrompt = buildGeminiPrompt(transcriptText, 50000);
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent?key=${apiKey}`;
@@ -931,43 +764,6 @@ async function extractTranscriptWithGemini(transcriptText: string, buffer?: Buff
     const payload = (await response.json()) as Record<string, unknown>;
     return { ok: true as const, payload };
   };
-
-  if (buffer) {
-    try {
-      const screenshotParser = new PDFParse({ data: buffer });
-      try {
-        const screenshots = await screenshotParser.getScreenshot({
-          partial: [1, 2],
-          desiredWidth: 1400,
-          imageDataUrl: false,
-        });
-        const imageParts = (screenshots.pages || [])
-          .slice(0, 2)
-          .map((page) => ({
-            inline_data: {
-              mime_type: 'image/png',
-              data: Buffer.from(page.data).toString('base64'),
-            },
-          }));
-
-        if (imageParts.length > 0) {
-          const imageResponse = await requestGemini([{ parts: [{ text: imagePrompt }, ...imageParts] }]);
-          if (imageResponse.ok) {
-            const mapped = mapGeminiPayloadToParseResult(imageResponse.payload, transcriptText);
-            if (mapped && mapped.courses.length > 0) {
-              return mapped;
-            }
-          } else {
-            console.error('Gemini image parse request failed:', imageResponse.status, imageResponse.body);
-          }
-        }
-      } finally {
-        await screenshotParser.destroy();
-      }
-    } catch (error) {
-      console.error('Gemini image parse setup failed:', error);
-    }
-  }
 
   if (buffer) {
     const pdfResponse = await requestGemini([
@@ -1230,7 +1026,7 @@ export async function extractAndValidateTranscriptBuffer(
   buffer: Buffer,
   context: TranscriptVerificationContext
 ): Promise<TranscriptPipelineResult> {
-  let transcriptText = '';
+  const transcriptText = normalizeText(buffer.toString('latin1'));
   let metadata: TranscriptPdfMetadata = {
     producer: null,
     creator: null,
@@ -1241,23 +1037,7 @@ export async function extractAndValidateTranscriptBuffer(
     editedSignal: false,
   };
 
-  try {
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const [textResult, infoResult] = await Promise.all([
-        parser.getText(),
-        parser.getInfo({ parsePageInfo: false }),
-      ]);
-      transcriptText = textResult.text || '';
-      metadata = parseMetadataInfo(infoResult.info, infoResult.fingerprints);
-    } finally {
-      await parser.destroy();
-    }
-  } catch (error) {
-    console.error('Transcript PDF extraction error:', error);
-  }
-
-  const normalizedText = normalizeText(transcriptText);
+  const normalizedText = transcriptText;
   let parseResult: TranscriptParseResult | null = null;
 
   if (normalizedText) {
@@ -1283,52 +1063,6 @@ export async function extractAndValidateTranscriptBuffer(
           transferCredits: parseResult.summary.transferCredits ?? fallback.summary.transferCredits,
         },
       };
-    }
-  }
-
-  if (parseResult.courses.length === 0) {
-    console.info('Grade parser: trying Tesseract OCR fallback');
-    const ocrText = await extractTextWithImageOcr(buffer);
-    if (ocrText) {
-      const ocrFallback = buildRegexFallback(ocrText);
-      if (ocrFallback.courses.length > 0) {
-        parseResult = {
-          ...parseResult,
-          courses: ocrFallback.courses,
-          normalizedText: ocrText,
-          rawTextLength: ocrText.length,
-          source: 'tesseract_ocr',
-          extractionConfidence: Math.max(parseResult.extractionConfidence, 0.55),
-          summary: {
-            cga: parseResult.summary.cga ?? ocrFallback.summary.cga,
-            totalCreditsEarned: parseResult.summary.totalCreditsEarned ?? ocrFallback.summary.totalCreditsEarned,
-            transferCredits: parseResult.summary.transferCredits ?? ocrFallback.summary.transferCredits,
-          },
-        };
-      }
-    }
-  }
-
-  if (parseResult.courses.length === 0) {
-    console.info('Grade parser: trying Gemini image OCR fallback');
-    const geminiOcrText = await extractTextWithGeminiImageOcr(buffer);
-    if (geminiOcrText) {
-      const geminiOcrFallback = buildRegexFallback(geminiOcrText);
-      if (geminiOcrFallback.courses.length > 0) {
-        parseResult = {
-          ...parseResult,
-          courses: geminiOcrFallback.courses,
-          normalizedText: geminiOcrText,
-          rawTextLength: geminiOcrText.length,
-          source: 'gemini_ocr',
-          extractionConfidence: Math.max(parseResult.extractionConfidence, 0.62),
-          summary: {
-            cga: parseResult.summary.cga ?? geminiOcrFallback.summary.cga,
-            totalCreditsEarned: parseResult.summary.totalCreditsEarned ?? geminiOcrFallback.summary.totalCreditsEarned,
-            transferCredits: parseResult.summary.transferCredits ?? geminiOcrFallback.summary.transferCredits,
-          },
-        };
-      }
     }
   }
 
