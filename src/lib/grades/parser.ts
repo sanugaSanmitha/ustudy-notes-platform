@@ -1027,7 +1027,7 @@ export async function extractAndValidateTranscriptBuffer(
   context: TranscriptVerificationContext
 ): Promise<TranscriptPipelineResult> {
   const transcriptText = normalizeText(buffer.toString('latin1'));
-  let metadata: TranscriptPdfMetadata = {
+  const metadata: TranscriptPdfMetadata = {
     producer: null,
     creator: null,
     title: null,
