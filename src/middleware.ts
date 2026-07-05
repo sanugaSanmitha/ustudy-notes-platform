@@ -16,6 +16,7 @@ const PROTECTED_PATHS = [
 ];
 
 const AUTH_PATHS = ['/register', '/login', '/verify-email'];
+type AppRole = 'user' | 'support' | 'admin';
 
 function isAdminEmail(email?: string | null) {
   const configured = (process.env.ADMIN_REVIEW_EMAIL || '')
@@ -42,7 +43,12 @@ async function getUserRoles(
     return [];
   }
 
-  return (data || []).map((row) => row.role as 'user' | 'support' | 'admin');
+  return (data || [])
+    .map((row: { role: string | null }) => row.role)
+    .filter(
+      (role: string | null): role is AppRole =>
+        role === 'user' || role === 'support' || role === 'admin'
+    );
 }
 
 export async function middleware(request: NextRequest) {
@@ -92,7 +98,7 @@ export async function middleware(request: NextRequest) {
   );
 
   let isProfileCompleted = false;
-  let userRoles: Array<'user' | 'support' | 'admin'> = [];
+  let userRoles: AppRole[] = [];
 
   if (user) {
     userRoles = await getUserRoles(supabase, user.id);
