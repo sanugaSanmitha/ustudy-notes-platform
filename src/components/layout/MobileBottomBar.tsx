@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, ShoppingCart, User, LogIn } from 'lucide-react';
+import { BookOpen, ShoppingCart, User, LogIn, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
@@ -10,32 +10,43 @@ import { cn } from '@/lib/utils';
 export function MobileBottomBar() {
   const pathname = usePathname();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isReviewer, setIsReviewer] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
 
     supabase.auth.getUser().then(({ data: { user } }) => {
       setIsLoggedIn(!!user);
+      setIsReviewer(
+        ['support@ustudy.dev', 'admin@ustudy.dev'].includes((user?.email || '').toLowerCase())
+      );
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(!!session?.user);
+      setIsReviewer(
+        ['support@ustudy.dev', 'admin@ustudy.dev'].includes((session?.user?.email || '').toLowerCase())
+      );
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const tabs = [
-    { href: '/', label: 'Browse', icon: BookOpen },
-    { href: '/cart', label: 'Cart', icon: ShoppingCart },
-    {
-      href: isLoggedIn ? '/profile' : '/login',
-      label: isLoggedIn ? 'Profile' : 'Log in',
-      icon: isLoggedIn ? User : LogIn,
-    },
-  ];
+  const tabs = isLoggedIn
+    ? [
+        { href: '/', label: 'Browse', icon: BookOpen },
+        { href: '/cart', label: 'Cart', icon: ShoppingCart },
+        { href: '/grades/upload', label: 'Uploader', icon: Upload },
+        ...(isReviewer ? [{ href: '/support/grades', label: 'Queue', icon: User }] : []),
+        { href: '/profile', label: 'Profile', icon: User },
+      ]
+    : [
+        { href: '/', label: 'Browse', icon: BookOpen },
+        { href: '/cart', label: 'Cart', icon: ShoppingCart },
+        { href: '/login', label: 'Log in', icon: LogIn },
+      ];
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white md:hidden">

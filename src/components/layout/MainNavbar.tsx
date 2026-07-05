@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { BookOpen, LogOut, ShoppingCart, User } from 'lucide-react';
+import { BookOpen, LogOut, ShoppingCart, Upload, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
@@ -13,11 +13,20 @@ const NAV_LINKS = [
   { href: '/cart', label: 'Cart', icon: ShoppingCart },
   { href: '/profile', label: 'Profile', icon: User },
 ] as const;
+const REVIEWER_EMAILS = new Set(['support@ustudy.dev', 'admin@ustudy.dev']);
 
 export function MainNavbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const [isReviewer, setIsReviewer] = useState(false);
+  const navLinks = isLoggedIn
+    ? [
+        ...NAV_LINKS,
+        { href: '/grades/upload', label: 'Uploader', icon: Upload },
+        ...(isReviewer ? [{ href: '/support/grades', label: 'Support Queue', icon: User }] : []),
+      ]
+    : NAV_LINKS;
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -35,12 +44,14 @@ export function MainNavbar() {
 
     supabase.auth.getUser().then(({ data: { user } }) => {
       setIsLoggedIn(!!user);
+      setIsReviewer(REVIEWER_EMAILS.has((user?.email || '').toLowerCase()));
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(!!session?.user);
+      setIsReviewer(REVIEWER_EMAILS.has((session?.user?.email || '').toLowerCase()));
     });
 
     return () => subscription.unsubscribe();
@@ -57,7 +68,7 @@ export function MainNavbar() {
         </Link>
 
         <nav className="flex items-center gap-1">
-          {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+          {navLinks.map(({ href, label, icon: Icon }) => {
             const isActive =
               href === '/' ? pathname === '/' : pathname.startsWith(href);
 

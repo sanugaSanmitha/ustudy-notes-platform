@@ -34,38 +34,38 @@ We use **Resend** for email delivery and **GitHub Student Developer Pack** to ge
 
 ### Phase 1: Project Foundation & Global Configuration
 
-- [ ] **1. Project scaffolding and Supabase client setup**
+- [x] **1. Project scaffolding and Supabase client setup**
   - **Files/routes involved**: `package.json`, `next.config.ts`, `tailwind.config.ts`, `src/lib/supabase/server.ts`, `client.ts`, `admin.ts`, `.env.local`, `.env.example`
   - **Acceptance criteria**: `npm run dev` starts without errors; calling `supabase.auth.getSession()` via the Supabase client correctly returns `{ data: { session: null } }`; all environment variables are loaded with no warnings.
   - **Dependencies**: None
 
-- [ ] **2. Design system implementation and global layout**
+- [x] **2. Design system implementation and global layout**
   - **Files/routes involved**: `tailwind.config.ts`, `src/app/globals.css`, `src/components/ui/*` (all shadcn components), `src/components/layout/MainNavbar.tsx`, `MobileBottomBar.tsx`, `Footer.tsx`, `src/app/(main)/layout.tsx`, `src/app/admin/layout.tsx`
   - **Acceptance criteria**: Homepage is accessible; desktop shows top navigation bar, mobile shows bottom tab bar; global background, fonts, and colours comply with DESIGN.md; all shadcn components import and render correctly.
   - **Dependencies**: Task 1
 
-- [ ] **3. i18n routing configuration and language switcher**
+- [x] **3. i18n routing configuration and language switcher**
   - **Files/routes involved**: `next.config.ts`, `src/i18n.ts`, `src/messages/zh-Hant.json`, `zh-Hans.json`, `en.json`, `src/app/[locale]/layout.tsx`, language switcher in `MainNavbar`
   - **Acceptance criteria**: `/zh`, `/en` routes display the homepage in the corresponding language; the language toggle in the navbar switches between three languages and page text updates immediately; all base UI copy is covered in all three languages.
   - **Dependencies**: Task 2
 
 ### Phase 2: Database & Security
 
-- [ ] **4. Database migration and seed data**
+- [x] **4. Database migration and seed data**
   - **Files/routes involved**: `docs/migrations/001_initial_schema.sql`, seed script `scripts/seed.ts`
   - **Acceptance criteria**:
     - 4a: After running the migration in Supabase SQL Editor, all 20+ tables, indexes, and RLS policies are created and visible in the Table Editor.
     - 4b: Running the seed script populates the database with 30-50 seed notes, corresponding courses, and users; the homepage displays these seed notes correctly.
   - **Dependencies**: Task 1 (database connection ready)
 
-- [ ] **5. Auth middleware and RLS policy enforcement**
+- [x] **5. Auth middleware and RLS policy enforcement**
   - **Files/routes involved**: `src/middleware.ts`, `src/lib/supabase/admin.ts`, RLS policies for each table (via SQL or Supabase Dashboard)
   - **Acceptance criteria**: Unauthenticated access to `/cart`, `/checkout`, etc. redirects to login; regular users accessing `/admin` get 404 or permission denied; API queries to `notes` return only records with `status = 'published'` (in conjunction with RLS).
   - **Dependencies**: Task 4
 
 ### Phase 3: User & Verification
 
-- [ ] **6. GitHub Student Pack setup & Resend domain verification**
+- [x] **6. GitHub Student Pack setup & Resend domain verification**
   - **Files/routes involved**: GitHub Education portal, Resend Dashboard, domain DNS settings (Name.com/Namecheap)
   - **Acceptance criteria**:
     - 6a: GitHub Student Developer Pack application approved
@@ -75,7 +75,7 @@ We use **Resend** for email delivery and **GitHub Student Developer Pack** to ge
     - 6e: Can send a test email from the verified domain via Resend API
   - **Dependencies**: Task 1 (environment variables ready)
 
-- [ ] **7. User registration / login and email verification flow**
+- [x] **7. User registration / login and email verification flow**
   - **Files/routes involved**: `src/app/(auth)/register/page.tsx`, `login/page.tsx`, `verify-email/page.tsx`, `src/app/api/auth/register/route.ts`, `login/route.ts`, `verify-email/route.ts`, `resend-verification/route.ts`, `src/lib/resend/client.ts`
   - **Acceptance criteria**:
     - 7a: Register with an `@ust.hk` or `@connect.ust.hk` email
@@ -284,10 +284,10 @@ We use **Resend** for email delivery and **GitHub Student Developer Pack** to ge
 
 ### GitHub Student Pack Benefits Used
 
-- **Free domain** (Name.com or Namecheap) - 1-year registration
-- **GitHub Pro** - while you remain a student
-- **Azure credits** - $100 for cloud services
-- **DigitalOcean credits** - $200 for 1 year
+- ✅ **Free domain** (Name.com or Namecheap) - 1-year registration
+- ✅ **GitHub Pro** - while you remain a student
+- ✅ **Azure credits** - $100 for cloud services
+- ✅ **DigitalOcean credits** - $200 for 1 year
 
 ### Domain Options Available
 
@@ -303,11 +303,11 @@ We use **Resend** for email delivery and **GitHub Student Developer Pack** to ge
 
 This roadmap uses **Resend** with a **free custom domain from the GitHub Student Developer Pack**. Key benefits:
 
-- **Free custom domain** - 1 year via GitHub Student Pack (Name.com/Namecheap)
-- **No Microsoft Entra required** - we keep full control with Resend + Supabase
-- **Professional email sending** - Send from `noreply@yourdomain.dev`
-- **Simple email verification** - Custom flow with Resend API
-- **No credit card needed** - GitHub Student Pack provides the domain without payment info
-- **Full control** - You own the email verification logic
+- ✅ **Free custom domain** - 1 year via GitHub Student Pack (Name.com/Namecheap)
+- ✅ **No Microsoft Entra required** - we keep full control with Resend + Supabase
+- ✅ **Professional email sending** - Send from `noreply@yourdomain.dev`
+- ✅ **Simple email verification** - Custom flow with Resend API
+- ✅ **No credit card needed** - GitHub Student Pack provides the domain without payment info
+- ✅ **Full control** - You own the email verification logic
 
 The GitHub Student Pack is completely free as long as you remain a student, giving you a professional `.dev` or `.app` domain for your platform without any out-of-pocket cost.

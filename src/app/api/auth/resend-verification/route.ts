@@ -16,7 +16,7 @@ const schema = z.object({
 
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(100, '1 d'),
+  limiter: Ratelimit.slidingWindow(3, '1 d'),
 });
 
 function resendResponse(message?: string, options?: { tokenIssuedAt?: string }) {
@@ -88,11 +88,9 @@ export async function POST(request: NextRequest) {
     }
 
     const tokenIssuedAt = new Date().toISOString();
-    const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${tokenResult.token}`;
-
     if (isDev) {
       console.log(
-        `\n[DEV] Verification link for ${email}:\n${verificationUrl}\n`
+        `\n[DEV] Verification code for ${email}:\n${tokenResult.token}\n`
       );
     }
 

@@ -2,6 +2,11 @@
 import { jwtVerify, SignJWT } from 'jose';
 import { createHash, randomBytes } from 'crypto';
 
+const ALLOWED_NON_HKUST_EMAILS = new Set([
+  'support@ustudy.dev',
+  'admin@ustudy.dev',
+]);
+
 function getJwtSecret() {
   const secret = process.env.CRON_SECRET;
 
@@ -29,8 +34,7 @@ export async function verifyToken(token: string) {
 }
 
 export function isValidEmail(email: string): boolean {
-  // TEMP: allow personal email for local Resend testing. Remove before deploy.
-  if (email === 'rasanugasanmitha6010@gmail.com') {
+  if (ALLOWED_NON_HKUST_EMAILS.has(email)) {
     return true;
   }
 

@@ -11,3 +11,9 @@ grant select, insert, update, delete
 grant select, insert, update, delete
   on table public.verification_tokens
   to service_role;
+
+-- Allow authenticated users to read and update their own profile rows.
+grant select, update
+  on table public.users
+  to authenticated;
+

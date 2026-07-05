@@ -84,7 +84,13 @@ export async function POST(request: NextRequest) {
     // Check HKUST email domain
     if (!isValidEmail(normalizedEmail)) {
       return NextResponse.json(
-        { error: { code: 'INVALID_DOMAIN', message: 'Only @ust.hk or @connect.ust.hk email addresses are allowed' } },
+        {
+          error: {
+            code: 'INVALID_DOMAIN',
+            message:
+              'Only @ust.hk or @connect.ust.hk email addresses are allowed (except support@ustudy.dev and admin@ustudy.dev).',
+          },
+        },
         { status: 400 }
       );
     }
@@ -126,11 +132,9 @@ export async function POST(request: NextRequest) {
 
         if (tokenResult) {
           const tokenIssuedAt = new Date().toISOString();
-          const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${tokenResult.token}`;
-
           if (isDev) {
             console.log(
-              `\n[DEV] Verification link for ${normalizedEmail}:\n${verificationUrl}\n`
+              `\n[DEV] Verification code for ${normalizedEmail}:\n${tokenResult.token}\n`
             );
           }
 
@@ -182,11 +186,9 @@ export async function POST(request: NextRequest) {
 
           if (tokenResult) {
             const tokenIssuedAt = new Date().toISOString();
-            const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${tokenResult.token}`;
-
             if (isDev) {
               console.log(
-                `\n[DEV] Verification link for ${normalizedEmail}:\n${verificationUrl}\n`
+                `\n[DEV] Verification code for ${normalizedEmail}:\n${tokenResult.token}\n`
               );
             }
 
@@ -257,13 +259,11 @@ export async function POST(request: NextRequest) {
 
     const verificationToken = tokenResult.token;
     const tokenIssuedAt = new Date().toISOString();
-    const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${verificationToken}`;
-
-    // Dev helper: print the real verification link so local testing does not
+    // Dev helper: print the real verification code so local testing does not
     // depend on email delivery.
     if (isDev) {
       console.log(
-        `\n[DEV] Verification link for ${normalizedEmail}:\n${verificationUrl}\n`
+        `\n[DEV] Verification code for ${normalizedEmail}:\n${verificationToken}\n`
       );
     }
 

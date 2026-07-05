@@ -2,6 +2,9 @@
 export interface AuthUser {
   id: string;
   email: string;
+  fullName?: string | null;
+  school?: string | null;
+  profileCompleted?: boolean;
   anonymousId: string;
   isSeller: boolean;
   isFirstPurchase: boolean;

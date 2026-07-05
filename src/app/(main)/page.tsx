@@ -2,8 +2,14 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { createClient } from '@/lib/supabase/server';
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <section className="mb-10">
@@ -15,14 +21,16 @@ export default function HomePage() {
           download instantly.
         </p>
 
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button asChild className="bg-blue-600 hover:bg-blue-700">
-            <Link href="/register">Get started</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/login">Log in</Link>
-          </Button>
-        </div>
+        {!user && (
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button asChild className="bg-blue-600 hover:bg-blue-700">
+              <Link href="/register">Get started</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/login">Log in</Link>
+            </Button>
+          </div>
+        )}
       </section>
 
       <section className="mb-8">

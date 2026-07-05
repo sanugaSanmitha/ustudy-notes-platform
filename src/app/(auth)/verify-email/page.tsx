@@ -7,7 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 const PENDING_EMAIL_KEY = 'pendingVerificationEmail';
-const TEST_PERSONAL_EMAIL = 'rasanugasanmitha6010@gmail.com';
+const ALLOWED_NON_HKUST_EMAILS = new Set([
+  'support@ustudy.dev',
+  'admin@ustudy.dev',
+]);
+const MAX_RESEND_ATTEMPTS_PER_DAY = 3;
 
 function formatSentAt(date: Date) {
   return date.toLocaleTimeString([], {
@@ -21,6 +25,28 @@ function getCodeFingerprint(code: string) {
   if (!code) return '';
   if (code.length <= 8) return code;
   return `...${code.slice(-8)}`;
+}
+
+function normalizeVerificationToken(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+
+  // If user pastes the full verify link, extract the token.
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      return parsed.searchParams.get('token')?.trim() || trimmed;
+    } catch {
+      return trimmed;
+    }
+  }
+
+  // Support users pasting only query text like "token=abc123".
+  if (trimmed.startsWith('token=')) {
+    return trimmed.slice('token='.length).trim();
+  }
+
+  return trimmed;
 }
 
 export default function VerifyEmailPage() {
@@ -54,6 +80,14 @@ export default function VerifyEmailPage() {
   );
 
   const handleVerifyWithToken = useCallback(async (verifyToken: string) => {
+    const normalizedToken = normalizeVerificationToken(verifyToken);
+
+    if (!normalizedToken) {
+      setError('Please enter a valid verification code');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -61,7 +95,7 @@ export default function VerifyEmailPage() {
       const response = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: verifyToken }),
+        body: JSON.stringify({ token: normalizedToken }),
       });
 
       const result = await response.json();
@@ -129,19 +163,18 @@ export default function VerifyEmailPage() {
       return;
     }
 
-    if (
-      normalizedEmail !== TEST_PERSONAL_EMAIL &&
-      !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)
-    ) {
-      setError('Only @ust.hk or @connect.ust.hk email addresses are allowed.');
+    if (!ALLOWED_NON_HKUST_EMAILS.has(normalizedEmail) && !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)) {
+      setError(
+        'Only @ust.hk or @connect.ust.hk email addresses are allowed (except support@ustudy.dev and admin@ustudy.dev).'
+      );
       setResendLoading(false);
       return;
     }
 
     sessionStorage.setItem(PENDING_EMAIL_KEY, normalizedEmail);
 
-    if (resendCount >= 3) {
-      setError('You have exceeded the maximum resend attempts (3 per day). Please try again tomorrow.');
+    if (resendCount >= MAX_RESEND_ATTEMPTS_PER_DAY) {
+      setError(`You have exceeded the maximum resend attempts (${MAX_RESEND_ATTEMPTS_PER_DAY} per day). Please try again tomorrow.`);
       setResendLoading(false);
       return;
     }
@@ -196,7 +229,7 @@ export default function VerifyEmailPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center px-4">
         <div className="text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
@@ -211,12 +244,12 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Verify Your Email</h1>
           <p className="text-slate-500">
-            {email ? `We sent a verification link to ${email}` : 'Verification'}
+            {email ? `We sent a verification code to ${email}` : 'Verification'}
           </p>
         </div>
 
@@ -257,7 +290,7 @@ export default function VerifyEmailPage() {
               </p>
             )}
             <p className="text-xs text-slate-500 mt-1">
-              After resend, use the latest email only. Older codes are invalidated.
+              You can paste either the token or full verification link. After resend, only the latest code works.
             </p>
           </div>
 
@@ -299,7 +332,7 @@ export default function VerifyEmailPage() {
           </Button>
           {resendCount > 0 && (
             <p className="text-xs text-slate-500 mt-2 text-center">
-              Resent {resendCount}/3 times
+              Resent {resendCount}/{MAX_RESEND_ATTEMPTS_PER_DAY} times today
             </p>
           )}
         </div>

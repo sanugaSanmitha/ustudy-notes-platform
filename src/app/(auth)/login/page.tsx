@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { createClient } from '@/lib/supabase/client';
 
@@ -16,6 +17,9 @@ export default function LoginPage() {
     password: '',
   });
   const [error, setError] = useState('');
+  const [errorType, setErrorType] = useState<'none' | 'verification' | 'credentials' | 'general'>(
+    'none'
+  );
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -29,6 +33,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setErrorType('none');
     setLoading(true);
 
     if (!formData.email || !formData.password) {
@@ -49,11 +54,13 @@ export default function LoginPage() {
         const normalizedEmail = formData.email.trim().toLowerCase();
         const needsVerification = signInError.message.includes('Email not confirmed');
 
-        setError(
-          needsVerification
-            ? 'Please verify your email before logging in.'
-            : 'Invalid email or password'
-        );
+        if (needsVerification) {
+          setError('Please verify your email before logging in.');
+          setErrorType('verification');
+        } else {
+          setError('Invalid email or password.');
+          setErrorType('credentials');
+        }
 
         if (needsVerification && normalizedEmail) {
           sessionStorage.setItem('pendingVerificationEmail', normalizedEmail);
@@ -63,18 +70,36 @@ export default function LoginPage() {
         return;
       }
 
-      router.push('/profile');
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        setError('Login succeeded but session is not ready yet. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      router.replace('/');
       router.refresh();
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError('Invalid email or password.');
+      setErrorType('general');
       console.error('Login error:', err);
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center px-4">
+      <div className="relative w-full max-w-md">
+        <Link
+          href="/"
+          aria-label="Close and go to homepage"
+          className="absolute right-0 top-0 rounded-md px-3 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+        >
+          X
+        </Link>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Log In</h1>
           <p className="text-slate-500">Access your HKUST Notes account</p>
@@ -83,13 +108,25 @@ export default function LoginPage() {
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg space-y-2">
             <p className="text-red-700 text-sm">{error}</p>
-            {error.includes('verify your email') && formData.email && (
+            {errorType === 'verification' && formData.email && (
               <Link
                 href={`/verify-email?email=${encodeURIComponent(formData.email.trim().toLowerCase())}`}
                 className="text-sm text-blue-600 hover:underline font-medium"
               >
                 Resend verification email
               </Link>
+            )}
+            {(errorType === 'credentials' || errorType === 'general') && (
+              <div className="space-y-2">
+                <p className="text-sm text-red-700">
+                  Forgot your password?
+                </p>
+                <Button asChild variant="outline" size="sm" className="border-red-200">
+                  <Link href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}>
+                    Reset Password
+                  </Link>
+                </Button>
+              </div>
             )}
           </div>
         )}
@@ -115,9 +152,8 @@ export default function LoginPage() {
             <Label htmlFor="password" className="block text-sm font-medium text-slate-700">
               Password
             </Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
@@ -125,6 +161,14 @@ export default function LoginPage() {
               className="w-full"
               disabled={loading}
             />
+            <div className="mt-2 text-right">
+              <Link
+                href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}
+                className="text-sm text-blue-600 hover:underline font-medium"
+              >
+                Forgot your password?
+              </Link>
+            </div>
           </div>
 
           <Button

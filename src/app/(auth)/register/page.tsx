@@ -6,9 +6,15 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import type { RegisterPayload } from '@/types/auth';
+
+const ALLOWED_NON_HKUST_EMAILS = new Set([
+  'support@ustudy.dev',
+  'admin@ustudy.dev',
+]);
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -40,11 +46,11 @@ export default function RegisterPage() {
       return;
     }
 
-    if (
-      formData.email !== 'rasanugasanmitha6010@gmail.com' &&
-      !/@(connect\.)?ust\.hk$/i.test(formData.email)
-    ) {
-      setError('Only HKUST email addresses (@ust.hk or @connect.ust.hk) are allowed');
+    const normalizedEmail = formData.email.trim().toLowerCase();
+    if (!ALLOWED_NON_HKUST_EMAILS.has(normalizedEmail) && !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)) {
+      setError(
+        'Only HKUST emails (@ust.hk or @connect.ust.hk) are allowed, except support@ustudy.dev and admin@ustudy.dev.'
+      );
       setLoading(false);
       return;
     }
@@ -86,8 +92,6 @@ export default function RegisterPage() {
       }
 
       const requiresVerification = result.data?.requiresVerification !== false;
-      const normalizedEmail = formData.email.trim().toLowerCase();
-
       if (!requiresVerification) {
         router.push('/login');
         return;
@@ -104,8 +108,15 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center px-4">
+      <div className="relative w-full max-w-md">
+        <Link
+          href="/"
+          aria-label="Close and go to homepage"
+          className="absolute right-0 top-0 rounded-md px-3 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+        >
+          X
+        </Link>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Register</h1>
           <p className="text-slate-500">Create your HKUST Notes account</p>
@@ -141,9 +152,8 @@ export default function RegisterPage() {
             <Label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
               Password
             </Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               name="password"
               value={formData.password}
               onChange={handleChange}

@@ -9,6 +9,16 @@ export function Footer() {
           <p className="mt-1 text-sm text-slate-500">
             Secure note trading for HKUST students.
           </p>
+          <p className="mt-2 text-sm text-slate-600">
+            Contact:{' '}
+            <a href="mailto:support@ustudy.dev" className="hover:text-blue-600">
+              support@ustudy.dev
+            </a>{' '}
+            |{' '}
+            <a href="mailto:admin@ustudy.dev" className="hover:text-blue-600">
+              admin@ustudy.dev
+            </a>
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-4 text-sm text-slate-600">
