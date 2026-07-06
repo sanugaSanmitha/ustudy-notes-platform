@@ -84,7 +84,7 @@ export async function listAdminReviewRequests(statusFilter: string) {
   return {
     ok: true as const,
     requests: (data || []).map((row) => normalizeReviewListRow(row as Record<string, unknown>)),
-    workflowEnabled: Boolean((data || [])[0] && 'reviewed_by' in ((data || [])[0] as object))),
+    workflowEnabled: Boolean((data || [])[0] && 'reviewed_by' in ((data || [])[0] as object)),
   };
 }
 
