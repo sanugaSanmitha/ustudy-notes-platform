@@ -4,6 +4,12 @@ import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { sendAdminReviewRequestEmail } from '@/lib/email/resend';
 import { createReviewAction, upsertParseQueue } from '@/lib/grades/review-pipeline';
+import {
+  CourseReviewRow,
+  sanitizeCourseReviewRows,
+  summarizeReviewRows,
+  toNormalizedCourses,
+} from '@/lib/grades/review-model';
 
 const requestSchema = z.object({
   verificationId: z.string().uuid(),
@@ -17,6 +23,20 @@ const requestSchema = z.object({
   message: z.string().trim().max(500).optional(),
   externalTranscriptUrl: z.string().trim().url().max(1000).optional(),
   ownershipConfirmed: z.boolean(),
+  courseRows: z
+    .array(
+      z.object({
+        id: z.string().uuid().optional(),
+        source: z.enum(['ai', 'user_added']),
+        edited: z.boolean(),
+        confidence: z.number().min(0).max(1).nullable().optional(),
+        courseCode: z.string().trim().min(4).max(16),
+        courseName: z.string().trim().max(160).optional().default(''),
+        grade: z.string().trim().min(1).max(4),
+      })
+    )
+    .max(80)
+    .optional(),
 });
 
 const ISSUE_LABELS: Record<z.infer<typeof requestSchema>['issueType'], string> = {
@@ -56,6 +76,10 @@ export async function POST(request: NextRequest) {
     }
 
     const { verificationId, issueType, message, externalTranscriptUrl, ownershipConfirmed } = parsed.data;
+    const parsedCourseRows = parsed.data.courseRows
+      ? sanitizeCourseReviewRows(parsed.data.courseRows as CourseReviewRow[])
+      : null;
+    const parsedCourseSummary = parsedCourseRows ? summarizeReviewRows(parsedCourseRows) : null;
     if (!ownershipConfirmed) {
       return NextResponse.json(
         {
@@ -72,7 +96,7 @@ export async function POST(request: NextRequest) {
     const { data: verification, error: verificationError } = await adminClient
       .from('grade_verifications')
       .select(
-        'id, user_id, status, created_at, transcript_filename, transcript_storage_bucket, transcript_storage_path'
+        'id, user_id, status, confirmation_required, auto_approval_eligible, created_at, transcript_filename, transcript_storage_bucket, transcript_storage_path'
       )
       .eq('id', verificationId)
       .maybeSingle();
@@ -92,16 +116,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (verification.status !== 'manual_required') {
+    const canRequestFromManualRequired = verification.status === 'manual_required';
+    const canRequestFromPendingConfirmation =
+      verification.status === 'pending_review' && Boolean(verification.confirmation_required);
+    if (!canRequestFromManualRequired && !canRequestFromPendingConfirmation) {
       return NextResponse.json(
         {
           error: {
             code: 'INVALID_STATE',
-            message: 'Admin review can only be requested while manual input is required.',
+            message: 'Admin review can only be requested during manual input or pending confirmation.',
           },
         },
         { status: 400 }
       );
+    }
+
+    if (canRequestFromPendingConfirmation && (!parsedCourseSummary || !parsedCourseSummary.hasNeedsReview)) {
+      const requiresRiskReview = verification.auto_approval_eligible === false;
+      if (!requiresRiskReview) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'REVIEW_ROWS_REQUIRED',
+              message: 'Please include edited or added course rows when requesting admin review.',
+            },
+          },
+          { status: 400 }
+        );
+      }
     }
 
     if (!verification.transcript_storage_bucket || !verification.transcript_storage_path) {
@@ -177,13 +219,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { error: verificationStatusUpdateError } = await adminClient
+      .from('grade_verifications')
+      .update({
+        status: 'pending_review',
+        confirmation_required: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', verificationId);
+    if (verificationStatusUpdateError) {
+      console.error('Admin review verification status update error:', verificationStatusUpdateError);
+    }
+
+    if (canRequestFromPendingConfirmation && parsedCourseRows) {
+      const { error: verificationUpdateError } = await adminClient
+        .from('grade_verifications')
+        .update({
+          manual_courses: toNormalizedCourses(parsedCourseRows),
+          review_rows: parsedCourseRows,
+          submission_type: 'pdf_manual',
+          confirmation_required: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', verificationId);
+      if (verificationUpdateError) {
+        console.error('Admin review verification row update error:', verificationUpdateError);
+      }
+    }
+
     try {
       await upsertParseQueue({
         verificationId,
         userId: user.id,
-        verificationStatus: 'manual_required',
+        verificationStatus: 'pending_review',
         extractionConfidence: 0,
-        aiResultJson: null,
+        aiResultJson: parsedCourseRows ? { rows: parsedCourseRows, source: 'user_review_request' } : null,
         parserSource: 'manual_review_request',
         failureReason: ISSUE_LABELS[issueType],
       });
@@ -201,7 +271,7 @@ export async function POST(request: NextRequest) {
         actorUserId: user.id,
         actorRole: 'system',
         actionType: 'admin_review_requested',
-        fromStatus: verification.status,
+        fromStatus: canRequestFromPendingConfirmation ? 'pending_review' : verification.status,
         toStatus: 'queued_manual_fallback',
         notes: message || null,
         afterPayload: {
@@ -222,7 +292,7 @@ export async function POST(request: NextRequest) {
         day: 'numeric',
       });
 
-      const emailResult = await sendAdminReviewRequestEmail({
+      void sendAdminReviewRequestEmail({
         adminEmail: adminReviewEmail,
         studentName: profile?.full_name || user.email || 'Student',
         studentEmail: user.email || profile?.email || 'Unknown',
@@ -233,11 +303,11 @@ export async function POST(request: NextRequest) {
         userMessage: message?.trim() || '',
         transcriptFilename: verification.transcript_filename || 'Transcript.pdf',
         externalTranscriptUrl: externalTranscriptUrl?.trim() || undefined,
+      }).then((emailResult) => {
+        if (!emailResult.success) {
+          console.error('Admin review email failed; request is still recorded.');
+        }
       });
-
-      if (!emailResult.success) {
-        console.error('Admin review email failed; request is still recorded.');
-      }
     }
 
     return NextResponse.json(

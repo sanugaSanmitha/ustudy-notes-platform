@@ -147,3 +147,74 @@ export async function sendAdminReviewRequestEmail(payload: AdminReviewEmailPaylo
     return { success: false, error };
   }
 }
+
+type VerificationOutcomeEmailPayload = {
+  studentEmail: string;
+  studentName: string;
+  transcriptId: string;
+  adminNotes?: string | null;
+};
+
+export async function sendGradeVerificationApprovedEmail(payload: VerificationOutcomeEmailPayload) {
+  try {
+    const { error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: payload.studentEmail,
+      subject: 'Your transcript has been approved',
+      html: `
+        <h2>Transcript Approved</h2>
+        <p>Hi ${payload.studentName || 'Student'},</p>
+        <p>Your transcript verification has been approved.</p>
+        <p><strong>Transcript ID:</strong> ${payload.transcriptId}</p>
+        ${
+          payload.adminNotes
+            ? `<p><strong>Reviewer notes:</strong> ${payload.adminNotes}</p>`
+            : ''
+        }
+        <p>You can now continue seller onboarding and upload notes.</p>
+      `,
+    });
+
+    if (error) {
+      console.error('Verification approved email error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Verification approved email error:', error);
+    return { success: false, error };
+  }
+}
+
+export async function sendGradeVerificationRejectedEmail(payload: VerificationOutcomeEmailPayload) {
+  try {
+    const { error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: payload.studentEmail,
+      subject: 'Your transcript verification requires re-submission',
+      html: `
+        <h2>Transcript Verification Update</h2>
+        <p>Hi ${payload.studentName || 'Student'},</p>
+        <p>We could not approve this transcript submission.</p>
+        <p><strong>Transcript ID:</strong> ${payload.transcriptId}</p>
+        ${
+          payload.adminNotes
+            ? `<p><strong>Reviewer notes:</strong> ${payload.adminNotes}</p>`
+            : ''
+        }
+        <p>Please re-upload a clearer transcript or provide additional details and submit again.</p>
+      `,
+    });
+
+    if (error) {
+      console.error('Verification rejected email error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Verification rejected email error:', error);
+    return { success: false, error };
+  }
+}

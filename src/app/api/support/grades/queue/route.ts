@@ -84,7 +84,8 @@ export async function GET(request: NextRequest) {
   }
 
   const queue = (data || []).map((row) => {
-    const student = (row as { student?: { full_name: string | null; email: string | null } | null }).student;
+    const studentRaw = (row as { student?: unknown; users?: { full_name: string | null; email: string | null } | null }).student;
+    const student = Array.isArray(studentRaw) ? studentRaw[0] : studentRaw;
     return {
       ...row,
       users: student || (row as { users?: { full_name: string | null; email: string | null } | null }).users || null,

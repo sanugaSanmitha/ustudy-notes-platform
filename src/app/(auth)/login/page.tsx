@@ -2,16 +2,19 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { createClient } from '@/lib/supabase/client';
+import { getPostLoginPath } from '@/lib/auth/landing';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get('next');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -80,7 +83,18 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace('/');
+      const profileResponse = await fetch('/api/auth/profile', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      const profileResult = await profileResponse.json().catch(() => ({}));
+      const destination = getPostLoginPath({
+        profileCompleted: Boolean(profileResult.data?.profileCompleted),
+        isAdmin: Boolean(profileResult.data?.isAdmin),
+        next: nextPath,
+      });
+
+      router.replace(destination);
       router.refresh();
     } catch (err) {
       setError('Invalid email or password.');

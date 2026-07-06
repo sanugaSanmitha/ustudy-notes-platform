@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const { verificationId } = parsed.data;
     const { data: verification, error: verificationError } = await adminClient
       .from('grade_verifications')
-      .select('id, user_id, status, transcript_storage_bucket, transcript_storage_path')
+      .select('id, user_id, status, confirmation_required, transcript_storage_bucket, transcript_storage_path')
       .eq('id', verificationId)
       .maybeSingle();
 
@@ -54,9 +54,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (verification.status !== 'manual_required') {
+    const canCancelManualRequired = verification.status === 'manual_required';
+    const canCancelPendingConfirmation =
+      verification.status === 'pending_review' && Boolean(verification.confirmation_required);
+    if (!canCancelManualRequired && !canCancelPendingConfirmation) {
       return NextResponse.json(
-        { error: { code: 'INVALID_STATE', message: 'Only manual-required records can be cancelled.' } },
+        {
+          error: {
+            code: 'INVALID_STATE',
+            message: 'Only manual-required or pending-confirmation records can be cancelled.',
+          },
+        },
         { status: 400 }
       );
     }
@@ -82,6 +90,7 @@ export async function POST(request: NextRequest) {
     const { error: updateError } = await adminClient
       .from('grade_verifications')
       .update({
+        confirmation_required: false,
         transcript_storage_bucket: null,
         transcript_storage_path: null,
         transcript_storage_uploaded_at: null,

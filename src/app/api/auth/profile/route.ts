@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
+import { isAuthorizedAdmin } from "@/lib/auth/admin-access";
 import { z } from "zod";
 import { SCHOOL_OPTIONS } from "@/lib/profile/constants";
 
@@ -125,6 +126,19 @@ export async function GET() {
       );
     }
 
+    const { data: roleRows } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id);
+
+    const roles = (roleRows || [])
+      .map((row) => row.role)
+      .filter((role): role is "user" | "support" | "admin" =>
+        role === "user" || role === "support" || role === "admin"
+      );
+
+    const isAdmin = isAuthorizedAdmin(user.email, roles);
+
     return NextResponse.json(
       {
         data: {
@@ -140,6 +154,7 @@ export async function GET() {
           anonymousId: profile.anonymous_id,
           isSeller: profile.is_seller,
           isFirstPurchase: profile.is_first_purchase,
+          isAdmin,
           createdAt: profile.created_at,
           updatedAt: profile.updated_at,
         },

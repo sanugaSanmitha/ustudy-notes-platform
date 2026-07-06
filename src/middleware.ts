@@ -1,6 +1,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { isAdminEmail } from '@/lib/auth/admin-access';
 
 const PROTECTED_PATHS = [
   '/complete-profile',
@@ -18,15 +19,8 @@ const PROTECTED_PATHS = [
 const AUTH_PATHS = ['/register', '/login', '/verify-email'];
 type AppRole = 'user' | 'support' | 'admin';
 
-function isAdminEmail(email?: string | null) {
-  const configured = (process.env.ADMIN_REVIEW_EMAIL || '')
-    .split(',')
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-  if (configured.length === 0) {
-    return false;
-  }
-  return configured.includes((email || '').trim().toLowerCase());
+function isAdminUser(email: string | null | undefined, roles: AppRole[]) {
+  return isAdminEmail(email) || roles.includes('admin');
 }
 
 async function getUserRoles(
@@ -60,9 +54,10 @@ export async function middleware(request: NextRequest) {
   const isAuthPath = AUTH_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
+  const isHomePath = pathname === '/';
 
   // Skip Supabase/session work for routes that do not need auth enforcement.
-  if (!isProtectedPath && !isAuthPath && !isCompleteProfilePath) {
+  if (!isProtectedPath && !isAuthPath && !isCompleteProfilePath && !isHomePath) {
     return NextResponse.next();
   }
 
@@ -101,6 +96,7 @@ export async function middleware(request: NextRequest) {
   const isSupportPath = pathname === '/support' || pathname.startsWith('/support/');
 
   let isProfileCompleted = false;
+  let isSeller = false;
   let userRoles: AppRole[] = [];
 
   if (user) {
@@ -108,7 +104,7 @@ export async function middleware(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from('users')
-      .select('profile_completed, full_name, school')
+      .select('profile_completed, full_name, school, is_seller')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -117,18 +113,33 @@ export async function middleware(request: NextRequest) {
       profile?.full_name?.trim() &&
       profile?.school?.trim()
     );
+    isSeller = Boolean(profile?.is_seller);
+  }
+
+  const isNotesUploadPath = pathname === '/notes/upload' || pathname.startsWith('/notes/upload/');
+  if (isNotesUploadPath && user && !isSeller) {
+    const verifyUrl = new URL('/grades/upload', request.url);
+    verifyUrl.searchParams.set('reason', 'seller_required');
+    return NextResponse.redirect(verifyUrl);
   }
 
   if (isAdminPath && user) {
-    const isAuthorizedAdmin = isAdminEmail(user.email) || userRoles.includes('admin');
-    if (!isAuthorizedAdmin) {
+    const isAdminSupportPath = pathname === '/admin/support' || pathname.startsWith('/admin/support/');
+    const isAuthorizedAdminUser = isAdminUser(user.email, userRoles);
+    const isAuthorizedSupportUser = userRoles.includes('support');
+
+    if (isAdminSupportPath) {
+      if (!isAuthorizedAdminUser && !isAuthorizedSupportUser) {
+        return NextResponse.redirect(new URL('/', request.url));
+      }
+    } else if (!isAuthorizedAdminUser) {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }
 
   if (isSupportPath && user) {
     const isAuthorizedSupport =
-      isAdminEmail(user.email) || userRoles.includes('admin') || userRoles.includes('support');
+      isAdminUser(user.email, userRoles) || userRoles.includes('support');
     if (!isAuthorizedSupport) {
       return NextResponse.redirect(new URL('/', request.url));
     }
@@ -139,7 +150,12 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isCompleteProfilePath && user && isProfileCompleted) {
-    return NextResponse.redirect(new URL('/', request.url));
+    const landing = isAdminUser(user.email, userRoles) ? '/admin' : '/';
+    return NextResponse.redirect(new URL(landing, request.url));
+  }
+
+  if (isHomePath && user && isProfileCompleted && isAdminUser(user.email, userRoles)) {
+    return NextResponse.redirect(new URL('/admin', request.url));
   }
 
   if (isAuthPath && user) {
@@ -150,7 +166,11 @@ export async function middleware(request: NextRequest) {
       return supabaseResponse;
     }
 
-    const destination = isProfileCompleted ? '/' : '/complete-profile';
+    const destination = !isProfileCompleted
+      ? '/complete-profile'
+      : isAdminUser(user.email, userRoles)
+        ? '/admin'
+        : '/';
     return NextResponse.redirect(new URL(destination, request.url));
   }
 
@@ -159,6 +179,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/complete-profile/:path*',
     '/profile/:path*',
     '/cart/:path*',
@@ -167,6 +188,7 @@ export const config = {
     '/wallet/:path*',
     '/grades/:path*',
     '/notes/upload/:path*',
+    '/admin',
     '/admin/:path*',
     '/support/:path*',
     '/register/:path*',

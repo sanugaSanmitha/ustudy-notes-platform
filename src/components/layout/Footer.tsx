@@ -1,6 +1,14 @@
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/server';
 
-export function Footer() {
+export async function Footer() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isLoggedIn = Boolean(user);
+
   return (
     <footer className="mt-auto border-t border-slate-200 bg-slate-50">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between">
@@ -22,14 +30,18 @@ export function Footer() {
         </div>
 
         <div className="flex flex-wrap gap-4 text-sm text-slate-600">
-          <Link href="/register" className="hover:text-blue-600">
-            Register
-          </Link>
-          <Link href="/login" className="hover:text-blue-600">
-            Log in
-          </Link>
+          {!isLoggedIn && (
+            <>
+              <Link href="/register" className="hover:text-blue-600">
+                Register
+              </Link>
+              <Link href="/login" className="hover:text-blue-600">
+                Log in
+              </Link>
+            </>
+          )}
           <Link href="/profile" className="hover:text-blue-600">
-            Profile
+            My Account
           </Link>
         </div>
       </div>

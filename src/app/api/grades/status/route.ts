@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { gradeVerificationConfig } from '@/lib/grades/config';
 
-const MAX_UPLOADS_PER_DAY = 50;
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -40,7 +40,7 @@ export async function GET() {
     const { data: latest, error: latestError } = await adminClient
       .from('grade_verifications')
       .select(
-        'id, status, submission_type, parsed_courses, manual_courses, reviewer_note, notes, screenshot_url, risk_score, risk_level, risk_reasons, verification_decision, created_at, reviewed_at'
+        'id, status, submission_type, parsed_courses, manual_courses, review_rows, confirmation_required, auto_approval_eligible, reviewer_note, notes, screenshot_url, risk_score, risk_level, risk_reasons, verification_decision, created_at, reviewed_at'
       )
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
@@ -85,7 +85,8 @@ export async function GET() {
           latestVerification: latest || null,
           latestQueue,
           uploadsToday: uploadsTodayCount || 0,
-          remainingUploadsToday: Math.max(0, MAX_UPLOADS_PER_DAY - (uploadsTodayCount || 0)),
+          remainingUploadsToday: Math.max(0, gradeVerificationConfig.maxUploadsPerDay - (uploadsTodayCount || 0)),
+          maxUploadsPerDay: gradeVerificationConfig.maxUploadsPerDay,
         },
       },
       { status: 200 }

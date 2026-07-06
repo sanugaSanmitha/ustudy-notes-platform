@@ -1,23 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { isAdminEmail } from '@/lib/auth/admin-access';
 
-function normalizeAdminEmails(raw: string | undefined): string[] {
-  if (!raw) {
-    return [];
-  }
-  return raw
-    .split(',')
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-export function isAdminEmail(email: string | null | undefined): boolean {
-  const admins = normalizeAdminEmails(process.env.ADMIN_REVIEW_EMAIL);
-  if (admins.length === 0) {
-    return false;
-  }
-  return admins.includes((email || '').trim().toLowerCase());
-}
+export { isAdminEmail };
 
 async function resolveUserRoles(userId: string) {
   const { data, error } = await adminClient

@@ -5,9 +5,9 @@ import { adminClient } from '@/lib/supabase/admin';
 import { extractAndValidateTranscriptBuffer } from '@/lib/grades/parser';
 import { deleteTranscriptFile, uploadTranscriptFile } from '@/lib/grades/transcript-storage';
 import { createReviewAction, upsertParseQueue } from '@/lib/grades/review-pipeline';
+import { gradeVerificationConfig } from '@/lib/grades/config';
+import { buildInitialReviewRows } from '@/lib/grades/review-model';
 
-const MAX_UPLOADS_PER_DAY = 50;
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 export const dynamic = 'force-dynamic';
 
 async function ensureUserProfile(user: { id: string; email?: string | null }) {
@@ -43,13 +43,6 @@ async function ensureUserProfile(user: { id: string; email?: string | null }) {
   }
 
   return { ok: true };
-}
-
-function mapDecisionToStatus(decision: 'auto_verify' | 'manual_review' | 'reject') {
-  if (decision === 'auto_verify') {
-    return 'approved' as const;
-  }
-  return 'pending_review' as const;
 }
 
 function stripNullCharacters(value: string) {
@@ -102,9 +95,13 @@ function formatGradeVerificationDbError(error: unknown, fallback: string) {
       combined.includes('risk_score') ||
         combined.includes('verification_decision') ||
         combined.includes('transcript_storage_path') ||
-        combined.includes('transcript_storage_bucket'))
+        combined.includes('transcript_storage_bucket') ||
+        combined.includes('review_rows') ||
+        combined.includes('confirmation_required') ||
+        combined.includes('auto_approval_eligible') ||
+        combined.includes('rejected_retention_until'))
   ) {
-    return 'Transcript verification columns are missing. Run docs/migrations/008_transcript_verification_pipeline.sql and docs/migrations/010_transcript_storage_fields.sql in Supabase SQL Editor.';
+    return 'Transcript verification columns are missing. Run docs/migrations/008_transcript_verification_pipeline.sql, docs/migrations/010_transcript_storage_fields.sql, and docs/migrations/013_grade_verification_confirmation_and_retention.sql in Supabase SQL Editor.';
   }
 
   if (combined.includes('relation') && combined.includes('grade_verifications')) {
@@ -142,6 +139,52 @@ export async function POST(request: NextRequest) {
       return profileResult.response;
     }
 
+    if (!user.email_confirmed_at) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'EMAIL_NOT_VERIFIED',
+            message: 'Please verify your email before submitting a transcript.',
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    const { data: userProfile, error: userProfileError } = await adminClient
+      .from('users')
+      .select('profile_completed, full_name, is_seller')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (userProfileError) {
+      console.error('Grade upload user profile fetch error:', userProfileError);
+    }
+
+    if (!userProfile?.profile_completed) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'PROFILE_INCOMPLETE',
+            message: 'Please complete your profile before grade verification.',
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    if (userProfile.is_seller) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'ALREADY_VERIFIED',
+            message: 'Your account is already verified as a seller.',
+          },
+        },
+        { status: 409 }
+      );
+    }
+
     const now = new Date();
     const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
 
@@ -159,12 +202,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if ((uploadsTodayCount || 0) >= MAX_UPLOADS_PER_DAY) {
+    if ((uploadsTodayCount || 0) >= gradeVerificationConfig.maxUploadsPerDay) {
       return NextResponse.json(
-        { error: { code: 'UPLOAD_LIMIT', message: 'You can submit at most 50 grade verifications per day.' } },
+        {
+          error: {
+            code: 'UPLOAD_LIMIT',
+            message: `You can submit at most ${gradeVerificationConfig.maxUploadsPerDay} grade verifications per day.`,
+          },
+        },
         { status: 429 }
       );
     }
+
+    const { data: existingApproved, error: approvedCheckError } = await adminClient
+      .from('grade_verifications')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'approved')
+      .order('reviewed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (approvedCheckError) {
+      console.error('Grade upload approved-check error:', approvedCheckError);
+    }
+
+    if (existingApproved) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'ALREADY_VERIFIED',
+            message: 'Your account is already grade-verified. You do not need to upload another transcript.',
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    const { count: failedAttemptsToday, error: failedAttemptsError } = await adminClient
+      .from('grade_verifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', dayStart)
+      .or('status.eq.manual_required,failed_parse_attempts.gt.0');
+
+    if (failedAttemptsError) {
+      console.error('Grade upload failed-attempt count error:', failedAttemptsError);
+    }
+
+    const retryLimitReached = (failedAttemptsToday || 0) >= gradeVerificationConfig.maxParseRetries;
 
     const formData = await request.formData();
     const transcript = formData.get('transcript');
@@ -183,21 +269,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (transcript.size > MAX_FILE_SIZE_BYTES) {
+    if (transcript.size > gradeVerificationConfig.maxFileSizeBytes) {
       return NextResponse.json(
-        { error: { code: 'FILE_TOO_LARGE', message: 'Transcript file must be 10MB or smaller.' } },
+        {
+          error: {
+            code: 'FILE_TOO_LARGE',
+            message: `Transcript file must be ${Math.round(gradeVerificationConfig.maxFileSizeBytes / (1024 * 1024))}MB or smaller.`,
+          },
+        },
         { status: 400 }
       );
-    }
-
-    const { data: profile, error: profileFetchError } = await adminClient
-      .from('users')
-      .select('full_name')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (profileFetchError) {
-      console.error('Grade upload profile fetch error:', profileFetchError);
     }
 
     const transcriptBuffer = Buffer.from(await transcript.arrayBuffer());
@@ -225,13 +306,25 @@ export async function POST(request: NextRequest) {
     const pipelineResult = await extractAndValidateTranscriptBuffer(transcriptBuffer, {
       verifiedEmail: user.email || null,
       emailConfirmed: Boolean((user as { email_confirmed_at?: string | null }).email_confirmed_at),
-      fullName: profile?.full_name || null,
+      fullName: userProfile?.full_name || null,
     });
     const parsedCourses = pipelineResult.parse.courses;
-    const requiresManualInput = parsedCourses.length === 0;
-    const finalStatus = requiresManualInput
-      ? 'manual_required'
-      : mapDecisionToStatus(pipelineResult.verification.decision);
+    const parseFailed = parsedCourses.length === 0;
+    const requiresManualInput = parseFailed;
+    const autoApprovalEligible =
+      !parseFailed && !retryLimitReached && pipelineResult.verification.decision === 'auto_verify';
+    const confirmationRequired = !requiresManualInput;
+    const finalStatus = requiresManualInput ? 'manual_required' : 'pending_review';
+    const reviewRows = requiresManualInput
+      ? []
+      : buildInitialReviewRows(
+          parsedCourses.map((course) => ({
+            courseCode: course.courseCode,
+            courseName: course.courseName,
+            grade: course.grade,
+          })),
+          pipelineResult.parse.extractionConfidence
+        );
     const sanitizedTranscriptFilename = stripNullCharacters(transcript.name);
     const sanitizedTranscriptContentType = stripNullCharacters(transcript.type);
     const sanitizedParsedCourses = sanitizeForPostgres(parsedCourses);
@@ -270,6 +363,9 @@ export async function POST(request: NextRequest) {
         transcript_content_type: sanitizedTranscriptContentType,
         transcript_size_bytes: transcript.size,
         parsed_courses: requiresManualInput ? null : sanitizedParsedCourses,
+        review_rows: requiresManualInput ? null : sanitizeForPostgres(reviewRows),
+        auto_approval_eligible: autoApprovalEligible,
+        confirmation_required: confirmationRequired,
         parsed_transcript: sanitizedParsedTranscript,
         parser_source: sanitizedParserSource,
         extraction_confidence: pipelineResult.parse.extractionConfidence,
@@ -279,12 +375,15 @@ export async function POST(request: NextRequest) {
         risk_level: sanitizedRiskLevel,
         risk_reasons: sanitizedRiskReasons,
         verification_decision: sanitizedVerificationDecision,
+        parse_attempts: String(pipelineResult.parse.source || '').toLowerCase().includes('regex') ? 2 : 1,
+        failed_parse_attempts: parseFailed ? Math.min((failedAttemptsToday || 0) + 1, gradeVerificationConfig.maxParseRetries + 1) : 0,
         transcript_storage_bucket: transcriptStorageBucket,
         transcript_storage_path: transcriptStoragePath,
         transcript_storage_uploaded_at: new Date().toISOString(),
-        reviewed_at: finalStatus === 'approved' ? new Date().toISOString() : null,
       })
-      .select('id, status, parsed_courses, risk_score, risk_level, verification_decision, created_at')
+      .select(
+        'id, status, parsed_courses, review_rows, auto_approval_eligible, confirmation_required, risk_score, risk_level, verification_decision, created_at'
+      )
       .single();
 
     if (insertError || !inserted) {
@@ -311,15 +410,17 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await upsertParseQueue({
-        verificationId: inserted.id,
-        userId: user.id,
-        verificationStatus: normalizeVerificationStatus(inserted.status),
-        extractionConfidence: pipelineResult.parse.extractionConfidence,
-        aiResultJson: sanitizedParsedTranscript,
-        parserSource: String(sanitizedParserSource || ''),
-        failureReason: manualFailureReason,
-      });
+      if (requiresManualInput) {
+        await upsertParseQueue({
+          verificationId: inserted.id,
+          userId: user.id,
+          verificationStatus: normalizeVerificationStatus(inserted.status),
+          extractionConfidence: pipelineResult.parse.extractionConfidence,
+          aiResultJson: sanitizedParsedTranscript,
+          parserSource: String(sanitizedParserSource || ''),
+          failureReason: manualFailureReason,
+        });
+      }
 
       await createReviewAction({
         verificationId: inserted.id,
@@ -331,6 +432,8 @@ export async function POST(request: NextRequest) {
           riskScore: pipelineResult.verification.riskScore,
           decision: pipelineResult.verification.decision,
           parserSource: pipelineResult.parse.source,
+          autoApprovalEligible,
+          confirmationRequired,
         },
       });
     } catch (queueError) {
@@ -338,12 +441,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (requiresManualInput) {
-      const manualReason =
-        pipelineResult.parse.rawTextLength < 120
-          ? 'We could not extract enough readable text from this PDF.'
-          : lowQualityExtraction
-            ? 'The PDF text layer appears unreadable/compressed for automatic parsing. Please export a text-searchable PDF and upload again, or submit grades manually below.'
-          : `Text was extracted but no valid course-grade pairs were detected (source: ${pipelineResult.parse.source}).`;
+      const manualReason = pipelineResult.parse.rawTextLength < 120
+        ? 'We could not extract enough readable text from this PDF.'
+        : lowQualityExtraction
+          ? 'The PDF text layer appears unreadable/compressed for automatic parsing. Please export a text-searchable PDF and upload again, or submit grades manually below.'
+          : retryLimitReached
+            ? `You reached the automatic parsing retry limit (${gradeVerificationConfig.maxParseRetries}). Please submit grades manually or request admin review.`
+            : `Text was extracted but no valid course-grade pairs were detected (source: ${pipelineResult.parse.source}).`;
       return NextResponse.json(
         {
           data: {
@@ -355,30 +459,11 @@ export async function POST(request: NextRequest) {
             decision: pipelineResult.verification.decision,
             academicSummary: pipelineResult.parse.summary,
             message: `We could not parse your transcript automatically. ${manualReason} Please submit your course grades manually.`,
-            remainingUploadsToday: MAX_UPLOADS_PER_DAY - ((uploadsTodayCount || 0) + 1),
+            remainingUploadsToday: gradeVerificationConfig.maxUploadsPerDay - ((uploadsTodayCount || 0) + 1),
           },
         },
         { status: 200 }
       );
-    }
-
-    // Parsing succeeded: retain only structured data, delete raw transcript file for privacy.
-    try {
-      await deleteTranscriptFile(transcriptStorageBucket, transcriptStoragePath);
-    } catch (storageDeleteError) {
-      console.error('Transcript storage delete error:', storageDeleteError);
-    }
-    const { error: clearStorageRefError } = await adminClient
-      .from('grade_verifications')
-      .update({
-        transcript_storage_bucket: null,
-        transcript_storage_path: null,
-        transcript_storage_uploaded_at: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', inserted.id);
-    if (clearStorageRefError) {
-      console.error('Grade upload storage reference clear error:', clearStorageRefError);
     }
 
     return NextResponse.json(
@@ -388,22 +473,38 @@ export async function POST(request: NextRequest) {
           verificationId: inserted.id,
           status: inserted.status,
           courses: inserted.parsed_courses || [],
+          reviewRows: inserted.review_rows || [],
+          autoApprovalEligible: Boolean(inserted.auto_approval_eligible),
+          confirmationRequired: Boolean(inserted.confirmation_required),
+          retryLimitReached,
           academicSummary: pipelineResult.parse.summary,
           parserSource: pipelineResult.parse.source,
           riskScore: inserted.risk_score,
           riskLevel: inserted.risk_level,
           decision: inserted.verification_decision,
-          message:
-            inserted.status === 'approved'
-              ? 'Transcript parsed and auto-verified.'
-              : 'Transcript parsed successfully. Your verification is now pending review.',
-          remainingUploadsToday: MAX_UPLOADS_PER_DAY - ((uploadsTodayCount || 0) + 1),
+          message: retryLimitReached
+            ? 'Transcript parsed, but automatic approval is disabled after retry limit. Please request admin review.'
+            : 'Transcript parsed successfully. Please review courses and confirm before final approval.',
+          remainingUploadsToday: gradeVerificationConfig.maxUploadsPerDay - ((uploadsTodayCount || 0) + 1),
         },
       },
       { status: 200 }
     );
   } catch (error) {
     console.error('Grade upload error:', error);
+    const errorMessage = error instanceof Error ? error.message : '';
+    if (errorMessage.includes('Missing required server environment variables')) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'SERVER_CONFIG_ERROR',
+            message: errorMessage,
+          },
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: { code: 'INTERNAL_ERROR', message: 'Failed to upload transcript' } },
       { status: 500 }

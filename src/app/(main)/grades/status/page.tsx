@@ -17,6 +17,17 @@ type GradeVerification = {
   submission_type: 'pdf_auto' | 'pdf_manual' | 'manual';
   parsed_courses: GradeCourse[] | null;
   manual_courses: GradeCourse[] | null;
+  review_rows:
+    | Array<{
+        source: 'ai' | 'user_added';
+        rowState: 'green' | 'purple' | 'orange';
+        courseCode: string;
+        courseName?: string;
+        grade: string;
+      }>
+    | null;
+  confirmation_required: boolean;
+  auto_approval_eligible: boolean;
   reviewer_note: string | null;
   notes: string | null;
   screenshot_url: string | null;
@@ -29,6 +40,7 @@ type StatusResponse = {
     latestVerification: GradeVerification | null;
     uploadsToday: number;
     remainingUploadsToday: number;
+    maxUploadsPerDay?: number;
   };
   error?: { code?: string; message?: string };
 };
@@ -105,7 +117,18 @@ export default function GradeStatusPage() {
   }
 
   const latest = statusData?.latestVerification;
-  const courses = latest?.manual_courses || latest?.parsed_courses || [];
+  const quotaTotal =
+    statusData?.maxUploadsPerDay ??
+    (statusData?.uploadsToday || 0) + (statusData?.remainingUploadsToday || 0);
+  const courses =
+    latest?.manual_courses ||
+    latest?.review_rows?.map((row) => ({
+      courseCode: row.courseCode,
+      courseName: row.courseName || '',
+      grade: row.grade,
+    })) ||
+    latest?.parsed_courses ||
+    [];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -115,7 +138,7 @@ export default function GradeStatusPage() {
       <Card className="mt-6 p-6">
         <h2 className="text-lg font-semibold text-slate-900">Daily quota</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Uploaded today: {statusData?.uploadsToday || 0} / 50
+          Uploaded today: {statusData?.uploadsToday || 0} / {quotaTotal}
         </p>
         <p className="text-sm text-slate-600">Remaining today: {statusData?.remainingUploadsToday || 0}</p>
       </Card>
@@ -139,6 +162,11 @@ export default function GradeStatusPage() {
           <p className="mt-2 text-sm text-slate-600">
             Submitted at {new Date(latest.created_at).toLocaleString()}
           </p>
+          {latest.status === 'pending_review' && latest.confirmation_required && (
+            <p className="text-sm text-amber-700">
+              Review is waiting for your confirmation. Return to upload page to confirm AI rows or request admin review.
+            </p>
+          )}
           {latest.reviewed_at && (
             <p className="text-sm text-slate-600">
               Reviewed at {new Date(latest.reviewed_at).toLocaleString()}
@@ -178,6 +206,11 @@ export default function GradeStatusPage() {
             {latest.status === 'manual_required' && (
               <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white">
                 <Link href="/grades/upload">Complete manual submission</Link>
+              </Button>
+            )}
+            {latest.status === 'pending_review' && latest.confirmation_required && (
+              <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Link href="/grades/upload">Review AI extracted courses</Link>
               </Button>
             )}
           </div>

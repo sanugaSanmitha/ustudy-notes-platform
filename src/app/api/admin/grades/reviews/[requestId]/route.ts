@@ -7,11 +7,42 @@ import { createReviewAction } from '@/lib/grades/review-pipeline';
 import { createTranscriptSignedUrl, deleteTranscriptFile } from '@/lib/grades/transcript-storage';
 import { computeRejectedRetentionUntil, gradeVerificationConfig } from '@/lib/grades/config';
 import { sendGradeVerificationApprovedEmail, sendGradeVerificationRejectedEmail } from '@/lib/email/resend';
+import { syncVerifiedCoursesForApproval } from '@/lib/grades/verified-courses';
+import { applyRateLimitResponse, requireAdminCsrf } from '@/lib/api/admin-guard';
+import { hasHighSeverityRisk, validateCourseRows } from '@/lib/grades/course-validation';
+import type { CourseReviewRow } from '@/lib/grades/review-model';
 
-const updateSchema = z.object({
-  action: z.enum(['approve', 'reject']),
-  adminNotes: z.string().trim().max(1000).optional(),
-});
+const REJECT_REASONS = [
+  'illegible_document',
+  'missing_pages',
+  'mismatched_student_info',
+  'suspected_fraud',
+  'incomplete_extraction',
+  'other',
+] as const;
+
+const updateSchema = z
+  .object({
+    action: z.enum(['approve', 'reject']),
+    adminNotes: z.string().trim().max(1000).optional(),
+    rejectReason: z.enum(REJECT_REASONS).optional(),
+    rejectComment: z.string().trim().max(1000).optional(),
+    acknowledgeHighRisk: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.action === 'reject') {
+      if (!value.rejectReason) {
+        ctx.addIssue({ code: 'custom', message: 'Reject reason is required.', path: ['rejectReason'] });
+      }
+      if (!value.rejectComment || value.rejectComment.length < 10) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Reject comment must be at least 10 characters.',
+          path: ['rejectComment'],
+        });
+      }
+    }
+  });
 
 function buildTranscriptId(verificationId: string, createdAt: string) {
   const year = new Date(createdAt).getUTCFullYear();
@@ -31,22 +62,9 @@ export async function GET(
 
   const claimResult = await claimAdminReviewRequest(params.requestId, auth.user.id);
   if (!claimResult.ok) {
-    if (claimResult.code === 'NOT_FOUND') {
-      return NextResponse.json(
-        { error: { code: 'NOT_FOUND', message: claimResult.message } },
-        { status: 404 }
-      );
-    }
-
     return NextResponse.json(
-      {
-        error: {
-          code: claimResult.code,
-          message: claimResult.message,
-          reviewerName: claimResult.reviewerName,
-        },
-      },
-      { status: 409 }
+      { error: { code: 'NOT_FOUND', message: claimResult.message } },
+      { status: 404 }
     );
   }
 
@@ -83,7 +101,10 @@ export async function GET(
     return NextResponse.json({ error: { code: 'FETCH_ERROR', message } }, { status: 500 });
   }
 
-  const data = detailResult.request;
+  const data = detailResult.request as typeof detailResult.request & {
+    status: string;
+    review_started_at?: string | null;
+  };
 
   let transcriptUrl: string | null = null;
   let transcriptUrlError: string | null = null;
@@ -102,7 +123,8 @@ export async function GET(
     transcriptUrlError = 'Transcript file is not stored for this review request.';
   }
 
-  const readOnly = claimResult.readOnly || data.status === 'approved' || data.status === 'rejected';
+  const readOnly =
+    claimResult.readOnly || data.status === 'approved' || data.status === 'rejected';
 
   return NextResponse.json(
     {
@@ -111,6 +133,8 @@ export async function GET(
         transcriptUrl,
         transcriptUrlError,
         readOnly,
+        lockedBy: 'reviewerName' in claimResult ? claimResult.reviewerName : null,
+        reviewStartedAt: data.review_started_at || null,
       },
     },
     { status: 200 }
@@ -121,10 +145,16 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { requestId: string } }
 ) {
+  const csrfError = requireAdminCsrf(request);
+  if (csrfError) return csrfError;
+
   const auth = await requireAdminUser();
   if (!auth.ok) {
     return NextResponse.json({ error: { code: 'FORBIDDEN', message: auth.message } }, { status: auth.status });
   }
+
+  const rateError = applyRateLimitResponse(auth.user.id);
+  if (rateError) return rateError;
 
   const parsedBody = updateSchema.safeParse(await request.json());
   if (!parsedBody.success) {
@@ -134,12 +164,12 @@ export async function POST(
     );
   }
 
-  const { action, adminNotes } = parsedBody.data;
+  const { action, adminNotes, rejectReason, rejectComment, acknowledgeHighRisk } = parsedBody.data;
 
   const { data: reviewRequest, error: requestError } = await adminClient
     .from('admin_review_requests')
     .select(
-      'id, upload_id, status, user_id, reviewed_by, grade_verifications(id, created_at, transcript_storage_bucket, transcript_storage_path)'
+      'id, upload_id, status, user_id, reviewed_by, grade_verifications(id, review_rows, risk_level, risk_score, created_at, transcript_storage_bucket, transcript_storage_path)'
     )
     .eq('id', params.requestId)
     .maybeSingle();
@@ -187,17 +217,53 @@ export async function POST(
     );
   }
 
+  const verification = (reviewRequest as {
+    grade_verifications?: {
+      id?: string;
+      review_rows?: CourseReviewRow[];
+      risk_level?: string | null;
+      created_at?: string;
+      transcript_storage_bucket?: string | null;
+      transcript_storage_path?: string | null;
+    } | null;
+  }).grade_verifications;
+
+  if (action === 'approve') {
+    const rows = (verification?.review_rows || []) as CourseReviewRow[];
+    const issues = validateCourseRows(rows);
+    if (issues.length > 0) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: issues[0]?.message || 'Course validation failed.', details: issues } },
+        { status: 400 }
+      );
+    }
+
+    if (hasHighSeverityRisk(verification?.risk_level) && !acknowledgeHighRisk) {
+      return NextResponse.json(
+        { error: { code: 'UNRESOLVED_RISK_FLAGS', message: 'High-severity risk requires explicit acknowledgment.' } },
+        { status: 422 }
+      );
+    }
+  }
+
   const now = new Date().toISOString();
   const newReviewStatus = action === 'approve' ? 'approved' : 'rejected';
   const newVerificationStatus = action === 'approve' ? 'approved' : 'rejected';
   const rejectedRetentionUntil = action === 'reject' ? computeRejectedRetentionUntil(now) : null;
   const previousStatus = reviewRequest.status;
 
+  const studentFacingNotes =
+    action === 'reject'
+      ? [rejectComment, adminNotes].filter(Boolean).join('\n\n') || null
+      : adminNotes || null;
+
   const { data: updatedReview, error: reviewUpdateError } = await adminClient
     .from('admin_review_requests')
     .update({
       status: newReviewStatus,
-      admin_notes: adminNotes || null,
+      admin_notes: studentFacingNotes,
+      reject_reason: action === 'reject' ? rejectReason : null,
+      reject_comment: action === 'reject' ? rejectComment : null,
       reviewed_by: reviewRequest.reviewed_by || auth.user.id,
       resolved_at: now,
       updated_at: now,
@@ -231,7 +297,7 @@ export async function POST(
     .from('grade_verifications')
     .update({
       status: newVerificationStatus,
-      reviewer_note: adminNotes || null,
+      reviewer_note: studentFacingNotes,
       reviewed_at: now,
       approved_at: action === 'approve' ? now : null,
       confirmation_required: false,
@@ -300,7 +366,8 @@ export async function POST(
         actionType: action === 'approve' ? 'admin_approved' : 'admin_rejected',
         fromStatus: queueRecord.status,
         toStatus: newVerificationStatus,
-        notes: adminNotes || null,
+        notes: studentFacingNotes,
+        afterPayload: action === 'approve' ? { reviewRows: verification?.review_rows || [] } : { rejectReason, rejectComment },
       });
     } catch (reviewActionError) {
       console.error('Admin review action log error:', reviewActionError);
@@ -317,6 +384,12 @@ export async function POST(
       .eq('id', updatedReview.user_id);
     if (sellerUpdateError) {
       console.error('Admin seller update error:', sellerUpdateError);
+    }
+
+    try {
+      await syncVerifiedCoursesForApproval(updatedReview.upload_id, updatedReview.user_id);
+    } catch (syncError) {
+      console.error('Admin verified courses sync error:', syncError);
     }
   }
 
@@ -350,7 +423,7 @@ export async function POST(
         (reviewRequest as { grade_verifications?: { created_at?: string | null } | null }).grade_verifications
           ?.created_at || now
       ),
-      adminNotes: adminNotes || null,
+      adminNotes: studentFacingNotes,
     };
     if (action === 'approve') {
       void sendGradeVerificationApprovedEmail(payload);
@@ -365,8 +438,20 @@ export async function POST(
         requestId: updatedReview.id,
         status: newReviewStatus,
         verificationStatus: newVerificationStatus,
+        nextPendingId: action === 'approve' || action === 'reject' ? await findNextPendingReviewId() : null,
       },
     },
     { status: 200 }
   );
+}
+
+async function findNextPendingReviewId() {
+  const { data } = await adminClient
+    .from('admin_review_requests')
+    .select('id')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.id || null;
 }
