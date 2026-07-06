@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
-import { adminClient } from '@/lib/supabase/admin';
 import { requireAdminUser } from '@/lib/grades/admin';
+import { fetchAdminReviewStats, listAdminReviewRequests } from '@/lib/grades/admin-review';
 
 export const dynamic = 'force-dynamic';
+
+function formatFetchError(message: string, migrationHint: string | null) {
+  return migrationHint ? `${message} ${migrationHint}` : message;
+}
 
 export async function GET(request: Request) {
   const auth = await requireAdminUser();
@@ -12,25 +16,23 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const status = (url.searchParams.get('status') || 'pending').trim().toLowerCase();
-  const allowedStatus = new Set(['pending', 'reviewing', 'approved', 'rejected']);
+  const allowedStatus = new Set(['pending', 'reviewing', 'approved', 'rejected', 'all']);
   const statusFilter = allowedStatus.has(status) ? status : 'pending';
 
-  const { data, error } = await adminClient
-    .from('admin_review_requests')
-    .select(
-      'id, issue_type, message, external_transcript_url, status, created_at, updated_at, upload_id, user_id, grade_verifications(id, status, transcript_filename, transcript_storage_bucket, transcript_storage_path, risk_level, risk_score), users(full_name, email)'
-    )
-    .eq('status', statusFilter)
-    .order('created_at', { ascending: true })
-    .limit(100);
+  const [listResult, stats] = await Promise.all([listAdminReviewRequests(statusFilter), fetchAdminReviewStats()]);
 
-  if (error) {
-    console.error('Admin review list fetch error:', error);
+  if (!listResult.ok) {
+    console.error('Admin review list fetch error:', listResult.error);
     return NextResponse.json(
-      { error: { code: 'FETCH_ERROR', message: 'Failed to fetch admin review requests.' } },
+      {
+        error: {
+          code: 'FETCH_ERROR',
+          message: formatFetchError('Failed to fetch admin review requests.', listResult.migrationHint),
+        },
+      },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ data: { requests: data || [] } }, { status: 200 });
+  return NextResponse.json({ data: { requests: listResult.requests, stats } }, { status: 200 });
 }
