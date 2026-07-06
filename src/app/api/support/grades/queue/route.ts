@@ -17,8 +17,12 @@ function formatSupportQueueError(error: unknown, fallback: string) {
   const dbError = error as { code?: string; message?: string; details?: string | null; hint?: string | null } | null;
   const combined = `${dbError?.message || ''} ${dbError?.details || ''} ${dbError?.hint || ''}`.toLowerCase();
 
+  if (combined.includes('more than one relationship') || combined.includes('could not embed')) {
+    return 'Support queue query failed due to an ambiguous database relationship. Redeploy the latest app code and try again.';
+  }
+
   if (
-    combined.includes('relation') &&
+    combined.includes('does not exist') &&
     (combined.includes('grade_parse_queue') || combined.includes('review_actions') || combined.includes('user_roles'))
   ) {
     return 'Support review tables are missing. Run docs/migrations/011_human_review_pipeline.sql in Supabase SQL Editor.';
@@ -28,8 +32,12 @@ function formatSupportQueueError(error: unknown, fallback: string) {
     return 'Database permissions are missing for support queue tables. Re-run docs/migrations/011_human_review_pipeline.sql.';
   }
 
-  return fallback;
+  const detail = dbError?.message?.trim();
+  return detail ? `${fallback} (${detail})` : fallback;
 }
+
+const QUEUE_SELECT =
+  'id, verification_id, user_id, status, queue_tier, confidence_score, parser_source, failure_reason, assigned_to, assigned_at, reviewed_at, created_at, updated_at, grade_verifications!verification_id(id, status, transcript_filename, risk_level, risk_score), student:users!user_id(full_name, email)';
 
 export async function GET(request: NextRequest) {
   const auth = await requireReviewerUser();
@@ -43,9 +51,7 @@ export async function GET(request: NextRequest) {
 
   let query = adminClient
     .from('grade_parse_queue')
-    .select(
-      'id, verification_id, user_id, status, queue_tier, confidence_score, parser_source, failure_reason, assigned_to, assigned_at, reviewed_at, created_at, updated_at, grade_verifications(id, status, transcript_filename, risk_level, risk_score), users(full_name, email)'
-    )
+    .select(QUEUE_SELECT)
     .order('created_at', { ascending: true })
     .limit(100);
 
@@ -66,12 +72,26 @@ export async function GET(request: NextRequest) {
     console.error('Support queue fetch error:', error);
     const message = formatSupportQueueError(error, 'Failed to fetch support queue.');
     return NextResponse.json(
-      { error: { code: 'FETCH_ERROR', message } },
+      {
+        error: {
+          code: 'FETCH_ERROR',
+          message,
+          detail: process.env.NODE_ENV === 'production' ? null : error,
+        },
+      },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ data: { queue: data || [] } }, { status: 200 });
+  const queue = (data || []).map((row) => {
+    const student = (row as { student?: { full_name: string | null; email: string | null } | null }).student;
+    return {
+      ...row,
+      users: student || (row as { users?: { full_name: string | null; email: string | null } | null }).users || null,
+    };
+  });
+
+  return NextResponse.json({ data: { queue } }, { status: 200 });
 }
 
 export async function POST(request: NextRequest) {
