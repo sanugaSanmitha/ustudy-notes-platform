@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { isStaffEmail } from '@/lib/auth/staff-emails';
 
 export function useSellerNav() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
@@ -9,12 +10,11 @@ export function useSellerNav() {
   const [isReviewer, setIsReviewer] = useState(false);
 
   useEffect(() => {
-    const reviewerEmails = new Set(['support@ustudy.dev', 'admin@ustudy.dev']);
     const supabase = createClient();
 
     const load = async (userId: string | null, email: string | null) => {
       setIsLoggedIn(Boolean(userId));
-      setIsReviewer(reviewerEmails.has((email || '').toLowerCase()));
+      setIsReviewer(isStaffEmail(email));
 
       if (!userId) {
         setIsSeller(false);

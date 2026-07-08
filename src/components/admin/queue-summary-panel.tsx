@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 
 type QueueSummaryItem = {
   id: string;
+  user_id?: string;
   status: string;
   created_at: string;
   student?: { full_name: string | null; email: string | null } | null;
@@ -36,7 +37,15 @@ export function QueueSummaryPanel({ items, slaHours = 48 }: QueueSummaryPanelPro
                 key={item.id}
                 className={`rounded border p-3 text-sm ${overdue ? 'border-l-4 border-l-amber-400 border-slate-200' : 'border-slate-200'}`}
               >
-                <p className="font-medium">{item.student?.full_name || 'Unknown'}</p>
+                <p className="font-medium">
+                  {item.user_id ? (
+                    <Link href={`/admin/users/${item.user_id}`} className="text-blue-600 hover:underline">
+                      {item.student?.full_name || 'Unknown'}
+                    </Link>
+                  ) : (
+                    item.student?.full_name || 'Unknown'
+                  )}
+                </p>
                 <p className="text-xs text-slate-500">
                   {new Date(item.created_at).toLocaleDateString()} · {item.status} ·{' '}
                   {item.reviewer?.full_name || 'Unassigned'}

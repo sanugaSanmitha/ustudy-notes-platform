@@ -4,6 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { createReviewAction, upsertParseQueue } from '@/lib/grades/review-pipeline';
 import { deleteTranscriptFile } from '@/lib/grades/transcript-storage';
+import { enrichCourseRows } from '@/lib/courses/catalog';
+import { isValidManualSubmissionGrade } from '@/lib/grades/course-validation';
+import { buildManualReviewRows } from '@/lib/grades/review-model';
 
 const manualSubmissionSchema = z.object({
   verificationId: z.string().uuid(),
@@ -12,7 +15,10 @@ const manualSubmissionSchema = z.object({
       z.object({
         courseCode: z.string().trim().min(4).max(16),
         courseName: z.string().trim().max(120).optional(),
-        grade: z.string().trim().min(1).max(4),
+        grade: z
+          .string()
+          .trim()
+          .refine(isValidManualSubmissionGrade, 'Grade must be A+, A, A-, B+, B, or B-.'),
       })
     )
     .min(1, 'At least one course is required')
@@ -74,16 +80,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const normalizedCourses = courses.map((course) => ({
-      courseCode: course.courseCode.toUpperCase().replace(/\s+/g, ''),
-      courseName: (course.courseName || '').trim(),
-      grade: course.grade.toUpperCase(),
-    }));
+    const normalizedCourses = await enrichCourseRows(
+      courses.map((course) => ({
+        courseCode: course.courseCode.toUpperCase().replace(/\s+/g, ''),
+        courseName: (course.courseName || '').trim(),
+        grade: course.grade.toUpperCase(),
+      }))
+    );
+
+    const reviewRows = buildManualReviewRows(normalizedCourses);
 
     const { data: updated, error: updateError } = await adminClient
       .from('grade_verifications')
       .update({
         manual_courses: normalizedCourses,
+        review_rows: reviewRows,
         screenshot_url: screenshotUrl || null,
         notes: notes || null,
         submission_type: 'manual',

@@ -7,6 +7,7 @@ import { deleteTranscriptFile, uploadTranscriptFile } from '@/lib/grades/transcr
 import { createReviewAction, upsertParseQueue } from '@/lib/grades/review-pipeline';
 import { gradeVerificationConfig } from '@/lib/grades/config';
 import { buildInitialReviewRows } from '@/lib/grades/review-model';
+import { enrichCourseRows, findUnknownCourseCodes } from '@/lib/courses/catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -308,11 +309,17 @@ export async function POST(request: NextRequest) {
       emailConfirmed: Boolean((user as { email_confirmed_at?: string | null }).email_confirmed_at),
       fullName: userProfile?.full_name || null,
     });
-    const parsedCourses = pipelineResult.parse.courses;
+    const parsedCourses = await enrichCourseRows(pipelineResult.parse.courses);
     const parseFailed = parsedCourses.length === 0;
     const requiresManualInput = parseFailed;
-    const autoApprovalEligible =
+    const unknownCatalogCodes = parseFailed
+      ? []
+      : await findUnknownCourseCodes(parsedCourses.map((course) => course.courseCode));
+    let autoApprovalEligible =
       !parseFailed && !retryLimitReached && pipelineResult.verification.decision === 'auto_verify';
+    if (unknownCatalogCodes.length > 0) {
+      autoApprovalEligible = false;
+    }
     const confirmationRequired = !requiresManualInput;
     const finalStatus = requiresManualInput ? 'manual_required' : 'pending_review';
     const reviewRows = requiresManualInput

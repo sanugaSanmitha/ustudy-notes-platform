@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminUser } from '@/lib/grades/admin';
+import { requireVerificationReviewer } from '@/lib/grades/admin';
 import { releaseReviewLock } from '@/lib/grades/admin-lock';
 import { createReviewAction } from '@/lib/grades/review-pipeline';
 import { applyRateLimitResponse, requireAdminCsrf } from '@/lib/api/admin-guard';
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest, { params }: { params: { request
   const csrfError = requireAdminCsrf(request);
   if (csrfError) return csrfError;
 
-  const auth = await requireAdminUser();
+  const auth = await requireVerificationReviewer();
   if (!auth.ok) {
     return NextResponse.json({ error: { code: 'FORBIDDEN', message: auth.message } }, { status: auth.status });
   }

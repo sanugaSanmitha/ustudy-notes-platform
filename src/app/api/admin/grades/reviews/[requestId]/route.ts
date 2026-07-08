@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { adminClient } from '@/lib/supabase/admin';
-import { requireAdminUser } from '@/lib/grades/admin';
+import { requireVerificationReviewer } from '@/lib/grades/admin';
 import { claimAdminReviewRequest, fetchAdminReviewDetail } from '@/lib/grades/admin-review';
+import { listStudentRepliesForReviewRequest } from '@/lib/grades/student-reply';
 import { createReviewAction } from '@/lib/grades/review-pipeline';
 import { createTranscriptSignedUrl, deleteTranscriptFile } from '@/lib/grades/transcript-storage';
 import { computeRejectedRetentionUntil, gradeVerificationConfig } from '@/lib/grades/config';
@@ -10,7 +11,8 @@ import { sendGradeVerificationApprovedEmail, sendGradeVerificationRejectedEmail 
 import { syncVerifiedCoursesForApproval } from '@/lib/grades/verified-courses';
 import { applyRateLimitResponse, requireAdminCsrf } from '@/lib/api/admin-guard';
 import { hasHighSeverityRisk, validateCourseRows } from '@/lib/grades/course-validation';
-import type { CourseReviewRow } from '@/lib/grades/review-model';
+import { assertVerificationOwner, resolveReviewActorRole } from '@/lib/grades/verification-workflow';
+import { resolveVerificationReviewRows, type CourseReviewRow } from '@/lib/grades/review-model';
 
 const REJECT_REASONS = [
   'illegible_document',
@@ -55,12 +57,12 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { requestId: string } }
 ) {
-  const auth = await requireAdminUser();
+  const auth = await requireVerificationReviewer();
   if (!auth.ok) {
     return NextResponse.json({ error: { code: 'FORBIDDEN', message: auth.message } }, { status: auth.status });
   }
 
-  const claimResult = await claimAdminReviewRequest(params.requestId, auth.user.id);
+  const claimResult = await claimAdminReviewRequest(params.requestId, auth.user.id, { isAdmin: auth.isAdmin });
   if (!claimResult.ok) {
     return NextResponse.json(
       { error: { code: 'NOT_FOUND', message: claimResult.message } },
@@ -74,7 +76,7 @@ export async function GET(
         verificationId: claimResult.request.upload_id,
         reviewRequestId: claimResult.request.id,
         actorUserId: auth.user.id,
-        actorRole: 'admin',
+        actorRole: resolveReviewActorRole({ isAdmin: auth.isAdmin, isAssistant: auth.isAssistant }),
         actionType: 'review_claimed',
         fromStatus: 'pending',
         toStatus: 'reviewing',
@@ -126,10 +128,13 @@ export async function GET(
   const readOnly =
     claimResult.readOnly || data.status === 'approved' || data.status === 'rejected';
 
+  const studentReplies = await listStudentRepliesForReviewRequest(params.requestId).catch(() => []);
+
   return NextResponse.json(
     {
       data: {
         request: data,
+        studentReplies,
         transcriptUrl,
         transcriptUrlError,
         readOnly,
@@ -148,7 +153,7 @@ export async function POST(
   const csrfError = requireAdminCsrf(request);
   if (csrfError) return csrfError;
 
-  const auth = await requireAdminUser();
+  const auth = await requireVerificationReviewer();
   if (!auth.ok) {
     return NextResponse.json({ error: { code: 'FORBIDDEN', message: auth.message } }, { status: auth.status });
   }
@@ -169,7 +174,7 @@ export async function POST(
   const { data: reviewRequest, error: requestError } = await adminClient
     .from('admin_review_requests')
     .select(
-      'id, upload_id, status, user_id, reviewed_by, grade_verifications(id, review_rows, risk_level, risk_score, created_at, transcript_storage_bucket, transcript_storage_path)'
+      'id, upload_id, status, user_id, reviewed_by, assigned_to, updated_at, grade_verifications(id, review_rows, manual_courses, parsed_courses, risk_level, risk_score, created_at, transcript_storage_bucket, transcript_storage_path)'
     )
     .eq('id', params.requestId)
     .maybeSingle();
@@ -217,6 +222,18 @@ export async function POST(
     );
   }
 
+  const ownerCheck = assertVerificationOwner(reviewRequest, auth.user.id, { isAdmin: auth.isAdmin });
+  if (!ownerCheck.ok && reviewRequest.status !== 'pending') {
+    return NextResponse.json({ error: { code: ownerCheck.code, message: ownerCheck.message } }, { status: 409 });
+  }
+
+  if (reviewRequest.status === 'pending' && !auth.isAdmin) {
+    return NextResponse.json(
+      { error: { code: 'NOT_CLAIMED', message: 'Claim this verification before approving or rejecting.' } },
+      { status: 409 }
+    );
+  }
+
   const verification = (reviewRequest as {
     grade_verifications?: {
       id?: string;
@@ -229,7 +246,13 @@ export async function POST(
   }).grade_verifications;
 
   if (action === 'approve') {
-    const rows = (verification?.review_rows || []) as CourseReviewRow[];
+    const rows = resolveVerificationReviewRows(
+      (verification || {}) as {
+        review_rows?: CourseReviewRow[] | null;
+        manual_courses?: CourseReviewRow[] | null;
+        parsed_courses?: CourseReviewRow[] | null;
+      }
+    );
     const issues = validateCourseRows(rows);
     if (issues.length > 0) {
       return NextResponse.json(
@@ -269,7 +292,7 @@ export async function POST(
       updated_at: now,
     })
     .eq('id', params.requestId)
-    .in('status', ['pending', 'reviewing'])
+    .in('status', ['pending', 'reviewing', 'waiting_student', 'escalated', 'pending_reassignment'])
     .select('id, upload_id, status, user_id')
     .maybeSingle();
 
@@ -362,7 +385,7 @@ export async function POST(
         queueId: queueRecord.id,
         reviewRequestId: updatedReview.id,
         actorUserId: auth.user.id,
-        actorRole: 'admin',
+        actorRole: resolveReviewActorRole({ isAdmin: auth.isAdmin, isAssistant: auth.isAssistant }),
         actionType: action === 'approve' ? 'admin_approved' : 'admin_rejected',
         fromStatus: queueRecord.status,
         toStatus: newVerificationStatus,

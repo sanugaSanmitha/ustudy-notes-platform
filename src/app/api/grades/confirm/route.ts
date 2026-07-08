@@ -12,6 +12,7 @@ import {
 import { deleteTranscriptFile } from '@/lib/grades/transcript-storage';
 import { sendGradeVerificationApprovedEmail } from '@/lib/email/resend';
 import { syncVerifiedCoursesForApproval } from '@/lib/grades/verified-courses';
+import { enrichCourseRows } from '@/lib/courses/catalog';
 
 const rowSchema = z.object({
   id: z.string().uuid().optional(),
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { verificationId } = parsedBody.data;
-    const rows = sanitizeCourseReviewRows(parsedBody.data.reviewRows as CourseReviewRow[]);
+    const rows = sanitizeCourseReviewRows(await enrichCourseRows(parsedBody.data.reviewRows as CourseReviewRow[]));
     const summary = summarizeReviewRows(rows);
 
     const { data: verification, error: fetchError } = await adminClient

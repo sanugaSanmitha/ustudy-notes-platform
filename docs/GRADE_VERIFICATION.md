@@ -178,7 +178,7 @@ Seller flag is set on:
 
 ## Emails
 
-- Admin review request email (to `ADMIN_REVIEW_EMAIL`)
+- Admin review request email (to `ADMIN_REVIEW_EMAIL` — default: admin@, support@, assistant@ustudy.dev)
 - Student approval email
 - Student rejection email
 

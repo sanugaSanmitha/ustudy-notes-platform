@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { requireAdminUser } from '@/lib/grades/admin';
+import { requireVerificationReviewer } from '@/lib/grades/admin';
 import { adminClient } from '@/lib/supabase/admin';
 import { fetchAdminReviewDetail } from '@/lib/grades/admin-review';
 import { createReviewAction } from '@/lib/grades/review-pipeline';
 import { CourseReviewRow, sanitizeCourseReviewRows } from '@/lib/grades/review-model';
 import { validateCourseRows } from '@/lib/grades/course-validation';
 import { applyRateLimitResponse, requireAdminCsrf } from '@/lib/api/admin-guard';
+import { assertVerificationOwner, resolveReviewActorRole } from '@/lib/grades/verification-workflow';
 
 const updateSchema = z.object({
   reviewRows: z.array(z.record(z.string(), z.unknown())).min(1),
@@ -14,10 +15,10 @@ const updateSchema = z.object({
 
 export const dynamic = 'force-dynamic';
 
-async function assertCanEdit(requestId: string, adminId: string) {
+async function assertCanEdit(requestId: string, adminId: string, isAdmin: boolean) {
   const { data: reviewRequest, error } = await adminClient
     .from('admin_review_requests')
-    .select('id, status, reviewed_by, upload_id')
+    .select('id, status, reviewed_by, assigned_to, updated_at, upload_id')
     .eq('id', requestId)
     .maybeSingle();
 
@@ -25,12 +26,9 @@ async function assertCanEdit(requestId: string, adminId: string) {
     return { ok: false as const, status: 404, message: 'Review request not found.' };
   }
 
-  if (reviewRequest.status === 'approved' || reviewRequest.status === 'rejected') {
-    return { ok: false as const, status: 409, message: 'This request has already been finalized.' };
-  }
-
-  if (reviewRequest.reviewed_by && reviewRequest.reviewed_by !== adminId) {
-    return { ok: false as const, status: 409, message: 'Another admin holds the lock on this request.' };
+  const ownerCheck = assertVerificationOwner(reviewRequest, adminId, { isAdmin });
+  if (!ownerCheck.ok) {
+    return { ok: false as const, status: 409, message: ownerCheck.message };
   }
 
   return { ok: true as const, reviewRequest };
@@ -43,7 +41,7 @@ export async function PATCH(
   const csrfError = requireAdminCsrf(request);
   if (csrfError) return csrfError;
 
-  const auth = await requireAdminUser();
+  const auth = await requireVerificationReviewer();
   if (!auth.ok) {
     return NextResponse.json({ error: { code: 'FORBIDDEN', message: auth.message } }, { status: auth.status });
   }
@@ -59,7 +57,7 @@ export async function PATCH(
     );
   }
 
-  const access = await assertCanEdit(params.requestId, auth.user.id);
+  const access = await assertCanEdit(params.requestId, auth.user.id, auth.isAdmin);
   if (!access.ok) {
     return NextResponse.json({ error: { code: 'LOCKED', message: access.message } }, { status: access.status });
   }
@@ -100,7 +98,7 @@ export async function PATCH(
       verificationId: access.reviewRequest.upload_id,
       reviewRequestId: access.reviewRequest.id,
       actorUserId: auth.user.id,
-      actorRole: 'admin',
+      actorRole: resolveReviewActorRole({ isAdmin: auth.isAdmin, isAssistant: auth.isAssistant }),
       actionType: 'admin_edited_courses',
       fromStatus: access.reviewRequest.status,
       toStatus: access.reviewRequest.status,
@@ -117,7 +115,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { requestId: string } }
 ) {
-  const auth = await requireAdminUser();
+  const auth = await requireVerificationReviewer();
   if (!auth.ok) {
     return NextResponse.json({ error: { code: 'FORBIDDEN', message: auth.message } }, { status: auth.status });
   }

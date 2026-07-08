@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { gradeVerificationConfig } from '@/lib/grades/config';
+import { fetchOpenAdminReviewForStudent } from '@/lib/grades/student-reply';
+import { STATUS_LABELS, type VerificationStatus } from '@/lib/grades/verification-workflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,11 +81,37 @@ export async function GET() {
       }
     }
 
+    let openAdminReview: {
+      id: string;
+      status: string;
+      statusLabel: string;
+      studentInfoRequest: string | null;
+      createdAt: string;
+      updatedAt: string;
+    } | null = null;
+
+    try {
+      const review = await fetchOpenAdminReviewForStudent(user.id, latest?.id);
+      if (review) {
+        openAdminReview = {
+          id: review.id,
+          status: review.status,
+          statusLabel: STATUS_LABELS[review.status as VerificationStatus] || review.status.replace(/_/g, ' '),
+          studentInfoRequest: review.student_info_request,
+          createdAt: review.created_at,
+          updatedAt: review.updated_at,
+        };
+      }
+    } catch (reviewError) {
+      console.error('Grade status admin review fetch error:', reviewError);
+    }
+
     return NextResponse.json(
       {
         data: {
           latestVerification: latest || null,
           latestQueue,
+          openAdminReview,
           uploadsToday: uploadsTodayCount || 0,
           remainingUploadsToday: Math.max(0, gradeVerificationConfig.maxUploadsPerDay - (uploadsTodayCount || 0)),
           maxUploadsPerDay: gradeVerificationConfig.maxUploadsPerDay,

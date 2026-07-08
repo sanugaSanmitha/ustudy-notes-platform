@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { WaitingForInfo } from '@/components/student/waiting-for-info';
 
 type GradeCourse = {
   courseCode: string;
@@ -38,6 +39,14 @@ type GradeVerification = {
 type StatusResponse = {
   data?: {
     latestVerification: GradeVerification | null;
+    openAdminReview?: {
+      id: string;
+      status: string;
+      statusLabel: string;
+      studentInfoRequest: string | null;
+      createdAt: string;
+      updatedAt: string;
+    } | null;
     uploadsToday: number;
     remainingUploadsToday: number;
     maxUploadsPerDay?: number;
@@ -69,31 +78,33 @@ export default function GradeStatusPage() {
   const [error, setError] = useState('');
   const [statusData, setStatusData] = useState<StatusResponse['data']>(undefined);
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const response = await fetch('/api/grades/status', {
-          cache: 'no-store',
-          credentials: 'same-origin',
-        });
-        const result: StatusResponse = await response.json().catch(() => ({}));
+  const fetchStatus = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await fetch('/api/grades/status', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      const result: StatusResponse = await response.json().catch(() => ({}));
 
-        if (!response.ok) {
-          setError(result.error?.message || 'Failed to load grade verification status.');
-          return;
-        }
-
-        setStatusData(result.data);
-      } catch (statusError) {
-        console.error('Grade status fetch error:', statusError);
-        setError('Unable to load grade verification status right now.');
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        setError(result.error?.message || 'Failed to load grade verification status.');
+        return;
       }
-    };
 
-    fetchStatus();
+      setStatusData(result.data);
+    } catch (statusError) {
+      console.error('Grade status fetch error:', statusError);
+      setError('Unable to load grade verification status right now.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
 
   if (loading) {
     return (
@@ -117,6 +128,7 @@ export default function GradeStatusPage() {
   }
 
   const latest = statusData?.latestVerification;
+  const openAdminReview = statusData?.openAdminReview;
   const quotaTotal =
     statusData?.maxUploadsPerDay ??
     (statusData?.uploadsToday || 0) + (statusData?.remainingUploadsToday || 0);
@@ -142,6 +154,28 @@ export default function GradeStatusPage() {
         </p>
         <p className="text-sm text-slate-600">Remaining today: {statusData?.remainingUploadsToday || 0}</p>
       </Card>
+
+      {openAdminReview?.status === 'waiting_student' && openAdminReview.studentInfoRequest && (
+        <div className="mt-6">
+          <WaitingForInfo
+            requestId={openAdminReview.id}
+            reviewerMessage={openAdminReview.studentInfoRequest}
+            onSubmitted={fetchStatus}
+          />
+        </div>
+      )}
+
+      {openAdminReview && openAdminReview.status !== 'waiting_student' && (
+        <Card className="mt-6 p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Manual review progress</h2>
+          <p className="mt-2 text-sm text-slate-700">
+            Status: <span className="font-medium">{openAdminReview.statusLabel}</span>
+          </p>
+          <p className="text-sm text-slate-600">
+            Last updated {new Date(openAdminReview.updatedAt).toLocaleString()}
+          </p>
+        </Card>
+      )}
 
       {!latest ? (
         <Card className="mt-6 p-6">

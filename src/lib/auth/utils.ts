@@ -1,11 +1,7 @@
 
 import { jwtVerify, SignJWT } from 'jose';
 import { createHash, randomBytes } from 'crypto';
-
-const ALLOWED_NON_HKUST_EMAILS = new Set([
-  'support@ustudy.dev',
-  'admin@ustudy.dev',
-]);
+import { isStaffEmail } from '@/lib/auth/staff-emails';
 
 function getJwtSecret() {
   const secret = process.env.CRON_SECRET;
@@ -34,11 +30,11 @@ export async function verifyToken(token: string) {
 }
 
 export function isValidEmail(email: string): boolean {
-  if (ALLOWED_NON_HKUST_EMAILS.has(email)) {
+  if (isStaffEmail(email)) {
     return true;
   }
 
-  return /^[^\s@]+@(connect\.)?ust\.hk$/.test(email);
+  return /^[^\s@]+@(connect\.)?ust\.hk$/.test(email.toLowerCase());
 }
 
 export function isValidPassword(password: string): boolean {

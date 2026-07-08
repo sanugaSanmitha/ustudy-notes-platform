@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { AdminShell } from '@/components/admin/admin-shell';
+import { AdminShell, useAdminPortalRole } from '@/components/admin/admin-shell';
+import { StudentReplyPanel } from '@/components/admin/student-reply-panel';
+import { VerificationPriorityBadge, VerificationStatusBadge } from '@/components/admin/verification-workflow-badges';
 import { GradeTableEditor, type EditableCourseRow } from '@/components/admin/grade-table-editor';
 import { PdfViewer } from '@/components/admin/pdf-viewer';
 import { ConfidenceSummaryBar } from '@/components/admin/confidence-summary-bar';
@@ -14,10 +16,17 @@ import { Label } from '@/components/ui/label';
 import { REJECT_REASON_OPTIONS } from '@/lib/grades/reject-reasons';
 import { adminFetch } from '@/lib/api/admin-client';
 import { hasHighSeverityRisk } from '@/lib/grades/course-validation';
+import { resolveVerificationReviewRows } from '@/lib/grades/review-model';
+import { VerificationStatusSummaryBar } from '@/components/admin/verification-status-summary-bar';
+import {
+  VerificationAnalyticsCharts,
+  type VerificationAnalyticsData,
+} from '@/components/admin/verification-analytics-charts';
 import { ArrowLeft, Lock } from 'lucide-react';
 
 type ReviewPayload = {
   id: string;
+  user_id?: string;
   issue_type: string;
   message: string | null;
   external_transcript_url?: string | null;
@@ -31,6 +40,7 @@ type ReviewPayload = {
     transcript_filename: string | null;
     parser_source?: string | null;
     extraction_confidence?: number | null;
+    submission_type?: string | null;
     review_rows?: EditableCourseRow[] | null;
     parsed_courses: Array<{ courseCode: string; courseName?: string; grade: string }> | null;
     manual_courses: Array<{ courseCode: string; courseName?: string; grade: string }> | null;
@@ -41,41 +51,34 @@ type ReviewPayload = {
   } | null;
   users?: { full_name: string | null; email: string | null } | null;
   reviewer?: { full_name: string | null; email: string | null } | null;
+  priority?: string | null;
+  assigned_to?: string | null;
+  reassignment_reason?: string | null;
+  reassignment_requested_at?: string | null;
+  student_info_request?: string | null;
+  updated_at?: string | null;
 };
 
 type ConfirmAction = 'approve' | 'reject' | null;
 
 function normalizeRows(request: ReviewPayload | null): EditableCourseRow[] {
   if (!request?.grade_verifications) return [];
-  const reviewRows = request.grade_verifications.review_rows;
-  if (Array.isArray(reviewRows) && reviewRows.length > 0) {
-    return reviewRows.map((row, index) => ({
-      id: row.id || `row-${index}`,
-      source: row.source === 'user_added' ? 'user_added' : 'ai',
-      rowState: row.rowState || 'green',
-      edited: Boolean(row.edited),
-      confidence: row.confidence ?? null,
-      courseCode: row.courseCode || '',
-      courseName: row.courseName || '',
-      grade: row.grade || '',
-    }));
-  }
-  const fallback = request.grade_verifications.manual_courses || request.grade_verifications.parsed_courses || [];
-  return fallback.map((course, index) => ({
-    id: `fallback-${index}`,
-    source: 'ai' as const,
-    rowState: 'green' as const,
-    edited: false,
-    confidence: null,
-    courseCode: course.courseCode,
-    courseName: course.courseName || '',
-    grade: course.grade,
+  return resolveVerificationReviewRows(request.grade_verifications).map((row, index) => ({
+    id: row.id || `row-${index}`,
+    source: row.source === 'user_added' ? 'user_added' : 'ai',
+    rowState: row.rowState || (row.source === 'user_added' ? 'orange' : 'green'),
+    edited: Boolean(row.edited),
+    confidence: row.confidence ?? null,
+    courseCode: row.courseCode || '',
+    courseName: row.courseName || '',
+    grade: row.grade || '',
   }));
 }
 
 export default function AdminGradeReviewDetailPage() {
   const params = useParams<{ requestId: string }>();
   const router = useRouter();
+  const { isAdmin } = useAdminPortalRole();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -93,6 +96,16 @@ export default function AdminGradeReviewDetailPage() {
   const [acknowledgeHighRisk, setAcknowledgeHighRisk] = useState(false);
   const [successNextId, setSuccessNextId] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [staff, setStaff] = useState<Array<{ id: string; full_name: string | null; email: string; roles: string[] }>>([]);
+  const [workflowMessage, setWorkflowMessage] = useState('');
+  const [reassignmentReason, setReassignmentReason] = useState('');
+  const [infoRequestMessage, setInfoRequestMessage] = useState('');
+  const [selectedAssignee, setSelectedAssignee] = useState('');
+  const [selectedPriority, setSelectedPriority] = useState('normal');
+  const [studentReplies, setStudentReplies] = useState<
+    Array<{ id: string; message: string; files?: Array<{ name?: string }> | null; created_at: string }>
+  >([]);
+  const [analytics, setAnalytics] = useState<VerificationAnalyticsData | null>(null);
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -113,8 +126,10 @@ export default function AdminGradeReviewDetailPage() {
       setTranscriptUrlError(result?.data?.transcriptUrlError || null);
       setReadOnly(Boolean(result?.data?.readOnly));
       setLockedBy(result?.data?.lockedBy || null);
+      setStudentReplies(result?.data?.studentReplies || []);
       setAdminNotes(payload?.admin_notes || '');
       setCourseRows(normalizeRows(payload));
+      setSelectedPriority(payload?.priority || 'normal');
     } catch (detailError) {
       console.error('Admin review detail fetch error:', detailError);
       setError('Unable to load admin review details.');
@@ -126,6 +141,63 @@ export default function AdminGradeReviewDetailPage() {
   useEffect(() => {
     if (params.requestId) fetchDetail();
   }, [params.requestId, fetchDetail]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch('/api/admin/staff/assistants', { cache: 'no-store', credentials: 'same-origin' })
+      .then((response) => response.json())
+      .then((result) => setStaff(result?.data?.staff || result?.data?.assistants || []))
+      .catch(() => null);
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch('/api/admin/dashboard', { cache: 'no-store', credentials: 'same-origin' })
+      .then((response) => response.json())
+      .then((result) => setAnalytics(result?.data?.analytics || null))
+      .catch(() => null);
+  }, [isAdmin]);
+
+  const runWorkflowAction = async (body: Record<string, unknown>) => {
+    setSaving(true);
+    setError('');
+    setWorkflowMessage('');
+    try {
+      const response = await adminFetch(`/api/admin/grades/reviews/${params.requestId}/workflow`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        setError(result?.error?.message || 'Workflow action failed.');
+        return;
+      }
+      setWorkflowMessage('Updated successfully.');
+      await fetchDetail();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRequestReassignment = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const response = await adminFetch(`/api/admin/grades/reviews/${params.requestId}/reassignment`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reassignmentReason.trim() }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        setError(result?.error?.message || 'Failed to request reassignment.');
+        return;
+      }
+      setReassignmentReason('');
+      await fetchDetail();
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const isFinalized = request?.status === 'approved' || request?.status === 'rejected';
 
@@ -227,9 +299,191 @@ export default function AdminGradeReviewDetailPage() {
 
   const detailsPane = (
       <div className="space-y-4">
+        <VerificationStatusSummaryBar
+          requestId={request?.id || params.requestId}
+          status={request?.status || 'pending'}
+          priority={request?.priority}
+          createdAt={request?.created_at || new Date().toISOString()}
+          reviewStartedAt={request?.review_started_at}
+          assignedTo={request?.assigned_to}
+          reviewerName={request?.reviewer?.full_name || request?.reviewer?.email || null}
+          updatedAt={request?.updated_at}
+        />
+
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <VerificationStatusBadge status={request?.status || 'pending'} assignedTo={request?.assigned_to} />
+            <VerificationPriorityBadge priority={request?.priority} />
+            {request?.reviewer?.full_name && (
+              <span className="text-xs text-slate-600">Reviewer: {request.reviewer.full_name}</span>
+            )}
+          </div>
+          {request?.reassignment_reason && (
+            <p className="mt-2 text-xs text-amber-800">Reassignment requested: {request.reassignment_reason}</p>
+          )}
+          {request?.student_info_request && (
+            <p className="mt-2 text-xs text-blue-800">Waiting for student: {request.student_info_request}</p>
+          )}
+        </Card>
+
+        <StudentReplyPanel replies={studentReplies} />
+
+        {!readOnly && !isFinalized && (
+          <Card className="p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Workflow</h2>
+            {workflowMessage && <p className="mt-1 text-xs text-emerald-700">{workflowMessage}</p>}
+            {!isAdmin && request?.status === 'reviewing' && (
+              <div className="mt-3 space-y-2">
+                <textarea
+                  value={infoRequestMessage}
+                  onChange={(e) => setInfoRequestMessage(e.target.value.slice(0, 1000))}
+                  placeholder="Message to student when requesting more information…"
+                  rows={2}
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={saving || infoRequestMessage.trim().length < 10}
+                    onClick={() => runWorkflowAction({ action: 'request_info', message: infoRequestMessage.trim() })}
+                  >
+                    Request More Info
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={saving || reassignmentReason.trim().length < 10}
+                    onClick={handleRequestReassignment}
+                  >
+                    Request Reassignment
+                  </Button>
+                </div>
+                <textarea
+                  value={reassignmentReason}
+                  onChange={(e) => setReassignmentReason(e.target.value.slice(0, 1000))}
+                  placeholder="Reason for reassignment request…"
+                  rows={2}
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+            )}
+            {isAdmin && (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={selectedPriority}
+                    onChange={(e) => setSelectedPriority(e.target.value)}
+                    className="h-9 rounded-md border border-slate-200 px-2 text-sm"
+                  >
+                    <option value="urgent">Urgent</option>
+                    <option value="high">High</option>
+                    <option value="normal">Normal</option>
+                    <option value="low">Low</option>
+                  </select>
+                  <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runWorkflowAction({ action: 'change_priority', priority: selectedPriority })}>
+                    Change Priority
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runWorkflowAction({ action: 'escalate' })}>
+                    Escalate
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runWorkflowAction({ action: 'take' })}>
+                    Take
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => runWorkflowAction({ action: 'remove_assignment' })}>
+                    Remove Assignment
+                  </Button>
+                </div>
+                {request?.status === 'pending_reassignment' && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" disabled={saving} onClick={() => runWorkflowAction({ action: 'resolve_reassignment', decision: 'reject' })}>
+                      Deny Reassignment
+                    </Button>
+                    <select
+                      value={selectedAssignee}
+                      onChange={(e) => setSelectedAssignee(e.target.value)}
+                      className="h-9 rounded-md border border-slate-200 px-2 text-sm"
+                    >
+                      <option value="">Reassign to…</option>
+                      {staff.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.full_name || member.email}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={saving || !selectedAssignee}
+                      onClick={() =>
+                        runWorkflowAction({
+                          action: 'resolve_reassignment',
+                          decision: 'approve',
+                          newAssigneeUserId: selectedAssignee,
+                        })
+                      }
+                    >
+                      Approve Reassignment
+                    </Button>
+                  </div>
+                )}
+                {request?.status !== 'pending_reassignment' && staff.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      value={selectedAssignee}
+                      onChange={(e) => setSelectedAssignee(e.target.value)}
+                      className="h-9 rounded-md border border-slate-200 px-2 text-sm"
+                    >
+                      <option value="">Assign / Reassign…</option>
+                      {staff.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.full_name || member.email}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={saving || !selectedAssignee}
+                      onClick={async () => {
+                        setSaving(true);
+                        try {
+                          const response = await adminFetch(`/api/admin/grades/reviews/${params.requestId}/assign`, {
+                            method: 'POST',
+                            body: JSON.stringify({ assigneeUserId: selectedAssignee }),
+                          });
+                          const result = await response.json().catch(() => null);
+                          if (!response.ok) {
+                            setError(result?.error?.message || 'Assign failed.');
+                            return;
+                          }
+                          await fetchDetail();
+                        } finally {
+                          setSaving(false);
+                        }
+                      }}
+                    >
+                      Assign
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+
         <Card className="p-4">
           <h2 className="text-sm font-semibold text-slate-900">Student</h2>
-          <p className="mt-1 text-sm text-slate-700">{studentName}</p>
+          {request?.user_id ? (
+            <Link href={`/admin/users/${request.user_id}`} className="mt-1 inline-block text-sm font-medium text-blue-600 hover:underline">
+              {studentName}
+            </Link>
+          ) : (
+            <p className="mt-1 text-sm text-slate-700">{studentName}</p>
+          )}
           <p className="text-sm text-slate-500">{request?.users?.email}</p>
           <p className="mt-2 text-xs text-slate-500">
             Issue: {request?.issue_type.replace(/_/g, ' ')} · Submitted {request ? new Date(request.created_at).toLocaleString() : ''}
@@ -254,6 +508,14 @@ export default function AdminGradeReviewDetailPage() {
         </Card>
 
         <Card className="p-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">Course grades</h2>
+            {request?.grade_verifications?.submission_type === 'manual' && (
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800">
+                Student manual entry
+              </span>
+            )}
+          </div>
           <GradeTableEditor
             rows={courseRows}
             readOnly={readOnly || isFinalized}
@@ -276,6 +538,10 @@ export default function AdminGradeReviewDetailPage() {
               className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
             />
           </Card>
+        )}
+
+        {isAdmin && analytics && (
+          <VerificationAnalyticsCharts data={analytics} title="Queue Analytics" compact />
         )}
       </div>
     );
@@ -307,7 +573,7 @@ export default function AdminGradeReviewDetailPage() {
   return (
     <AdminShell
       title={studentName}
-      description={`Transcript review · ${request.status}`}
+      description={`Transcript review · ${request.status.replace(/_/g, ' ')}`}
       actions={
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline" size="sm">

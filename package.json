@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seed:courses": "node --env-file=.env.local scripts/seed-courses.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1079.0",
@@ -31,6 +32,7 @@
     "react": "^18",
     "react-dom": "^18",
     "react-hook-form": "^7.80.0",
+    "recharts": "^3.9.2",
     "resend": "^6.14.0",
     "shadcn": "^4.11.0",
     "sharp": "^0.35.2",

@@ -80,7 +80,7 @@ export async function sendPasswordResetEmail(
 }
 
 type AdminReviewEmailPayload = {
-  adminEmail: string;
+  adminEmail: string | string[];
   studentName: string;
   studentEmail: string;
   university: string;

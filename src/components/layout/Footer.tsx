@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { STAFF_EMAILS } from '@/lib/auth/staff-emails';
 
 export async function Footer() {
   const supabase = createClient();
@@ -19,13 +20,14 @@ export async function Footer() {
           </p>
           <p className="mt-2 text-sm text-slate-600">
             Contact:{' '}
-            <a href="mailto:support@ustudy.dev" className="hover:text-blue-600">
-              support@ustudy.dev
-            </a>{' '}
-            |{' '}
-            <a href="mailto:admin@ustudy.dev" className="hover:text-blue-600">
-              admin@ustudy.dev
-            </a>
+            {STAFF_EMAILS.map((email, index) => (
+              <span key={email}>
+                {index > 0 ? ' | ' : null}
+                <a href={`mailto:${email}`} className="hover:text-blue-600">
+                  {email}
+                </a>
+              </span>
+            ))}
           </p>
         </div>
 

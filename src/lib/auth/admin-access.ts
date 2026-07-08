@@ -1,32 +1,72 @@
-function normalizeAdminEmails(raw: string | undefined): string[] {
-  if (!raw) {
-    return [];
-  }
-  return raw
-    .split(',')
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-}
+import { isAdminPortalEmail, isAssistantPortalEmail, isSupportPortalEmail } from '@/lib/auth/staff-emails';
 
+export type AppRole = 'user' | 'support' | 'admin' | 'assistant';
+
+/** Full admin portal access (dashboard, users, audit, assign tasks). */
 export function isAdminEmail(email: string | null | undefined): boolean {
-  const admins = normalizeAdminEmails(process.env.ADMIN_REVIEW_EMAIL);
-  if (admins.length === 0) {
-    return false;
-  }
-  return admins.includes((email || '').trim().toLowerCase());
+  return isAdminPortalEmail(email);
 }
 
-type AppRole = 'user' | 'support' | 'admin';
+export function isAssistantEmail(email: string | null | undefined): boolean {
+  return isAssistantPortalEmail(email);
+}
+
+export function isSupportEmail(email: string | null | undefined): boolean {
+  return isSupportPortalEmail(email);
+}
 
 export function isAuthorizedAdmin(email: string | null | undefined, roles: AppRole[]) {
   return isAdminEmail(email) || roles.includes('admin');
 }
 
-export function isAuthorizedSupport(email: string | null | undefined, roles: AppRole[]) {
-  return isAuthorizedAdmin(email, roles) || roles.includes('support');
+export function isAuthorizedAssistant(email: string | null | undefined, roles: AppRole[]) {
+  return isAssistantEmail(email) || roles.includes('assistant');
 }
 
-/** Where to send the user immediately after a successful login. */
+export function isAuthorizedSupport(email: string | null | undefined, roles: AppRole[]) {
+  return isAuthorizedAdmin(email, roles) || isSupportEmail(email) || roles.includes('support');
+}
+
+/** Can open verification queue and approve/reject assigned transcripts. */
+export function isAuthorizedVerificationReviewer(email: string | null | undefined, roles: AppRole[]) {
+  return (
+    isAuthorizedAdmin(email, roles) ||
+    isAuthorizedAssistant(email, roles) ||
+    isAuthorizedSupport(email, roles)
+  );
+}
+
+export function resolvePortalLandingPath(options: {
+  profileCompleted: boolean;
+  email: string | null | undefined;
+  roles: AppRole[];
+  next?: string | null;
+}): string {
+  if (!options.profileCompleted) {
+    return '/complete-profile';
+  }
+
+  if (isAuthorizedAdmin(options.email, options.roles)) {
+    return '/admin';
+  }
+
+  if (isAuthorizedAssistant(options.email, options.roles)) {
+    return '/admin/grades';
+  }
+
+  if (isAuthorizedSupport(options.email, options.roles)) {
+    return '/admin/grades';
+  }
+
+  const next = options.next?.trim();
+  if (next && next.startsWith('/') && !next.startsWith('//')) {
+    return next;
+  }
+
+  return '/';
+}
+
+/** @deprecated Use resolvePortalLandingPath */
 export function getPostLoginPath(options: {
   profileCompleted: boolean;
   isAdmin: boolean;

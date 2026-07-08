@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Trash2 } from 'lucide-react';
+import { CourseCodeInput } from '@/components/courses/course-code-input';
 import { cn } from '@/lib/utils';
 
 export type EditableCourseRow = {
@@ -155,10 +156,26 @@ export function GradeTableEditor({ rows, readOnly, onChange, onSave }: GradeTabl
                 <div className="grid gap-2 sm:grid-cols-3">
                   <div>
                     <label className="mb-1 block text-xs text-slate-500">Course code</label>
-                    <Input
+                    <CourseCodeInput
                       value={row.courseCode}
                       disabled={readOnly || isPendingDelete}
-                      onChange={(e) => updateRow(row.id, 'courseCode', e.target.value.toUpperCase())}
+                      onChange={(value) => updateRow(row.id, 'courseCode', value)}
+                      onCourseSelect={(course) => {
+                        onChange(
+                          rows.map((item) => {
+                            if (item.id !== row.id) return item;
+                            const updated = {
+                              ...item,
+                              courseCode: course.courseCode,
+                              courseName: item.courseName.trim() ? item.courseName : course.courseTitle,
+                            };
+                            if (item.source === 'user_added') {
+                              return { ...updated, rowState: 'orange' as const, edited: true };
+                            }
+                            return { ...updated, rowState: 'purple' as const, edited: true };
+                          })
+                        );
+                      }}
                       className="h-8 text-sm"
                     />
                   </div>

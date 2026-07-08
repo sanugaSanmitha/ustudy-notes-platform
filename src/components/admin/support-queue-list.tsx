@@ -1,11 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 export type SupportQueueItem = {
   id: string;
   verification_id: string;
+  user_id?: string;
   status:
     | 'pending'
     | 'queued_support_fast'
@@ -67,7 +69,14 @@ export function SupportQueueList({ queue, updatingId, onAction }: SupportQueueLi
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-1">
                 <p className="text-sm font-semibold">
-                  {item.users?.full_name || 'Unknown Student'} ({item.users?.email || 'unknown email'})
+                  {item.user_id ? (
+                    <Link href={`/admin/users/${item.user_id}`} className="text-blue-600 hover:underline">
+                      {item.users?.full_name || 'Unknown Student'}
+                    </Link>
+                  ) : (
+                    item.users?.full_name || 'Unknown Student'
+                  )}{' '}
+                  ({item.users?.email || 'unknown email'})
                 </p>
                 <p className="text-xs text-slate-500">
                   Status: {STATUS_LABELS[item.status]} | Tier: {item.queue_tier} | Confidence:{' '}

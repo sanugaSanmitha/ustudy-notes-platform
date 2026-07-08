@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CourseSearchBar } from '@/components/courses/course-search-bar';
+import { countPublishedNotes } from '@/lib/courses/catalog';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function HomePage() {
@@ -10,6 +11,8 @@ export default async function HomePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const publishedNotesCount = await countPublishedNotes();
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <section className="mb-10">
@@ -17,8 +20,7 @@ export default async function HomePage() {
           Find course notes from HKUST students
         </h1>
         <p className="mt-3 max-w-2xl text-lg text-slate-500">
-          Browse verified notes by course, semester, and grade. Buy securely and
-          download instantly.
+          Browse verified notes by course, semester, and grade. Buy securely and download instantly.
         </p>
 
         {!user && (
@@ -34,39 +36,39 @@ export default async function HomePage() {
       </section>
 
       <section className="mb-8">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
-          <input
-            type="search"
-            disabled
-            placeholder="Search courses — coming soon"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-slate-500"
-          />
-        </div>
-        <p className="mt-2 text-sm text-slate-400">
-          Filters for year, semester, course, and grade will appear here.
-        </p>
+        <CourseSearchBar />
       </section>
 
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-slate-900">Course notes</h2>
-          <span className="text-sm text-slate-400">0 notes</span>
+          <Link href="/courses" className="text-sm text-blue-600 hover:underline">
+            Browse all courses
+          </Link>
         </div>
 
-        <Card className="flex flex-col items-center justify-center border-dashed px-6 py-16 text-center">
-          <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-blue-50 text-2xl">
-            📚
-          </div>
-          <h3 className="text-lg font-medium text-slate-900">No notes yet</h3>
-          <p className="mt-2 max-w-md text-sm text-slate-500">
-            Published notes will show up here once sellers upload and admins
-            approve them. Check back soon.
-          </p>
-          <Button asChild variant="outline" className="mt-6">
-            <Link href="/register">Become a seller</Link>
-          </Button>
-        </Card>
+        {publishedNotesCount > 0 ? (
+          <Card className="p-6">
+            <p className="text-sm text-slate-600">
+              {publishedNotesCount} published note{publishedNotesCount === 1 ? '' : 's'} available. Search above or
+              browse the full catalog.
+            </p>
+          </Card>
+        ) : (
+          <Card className="flex flex-col items-center justify-center border-dashed px-6 py-16 text-center">
+            <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-blue-50 text-2xl">
+              📚
+            </div>
+            <h3 className="text-lg font-medium text-slate-900">No notes yet</h3>
+            <p className="mt-2 max-w-md text-sm text-slate-500">
+              Published notes will show up here once sellers upload and admins approve them. You can already browse all
+              HKUST courses using search.
+            </p>
+            <Button asChild variant="outline" className="mt-6">
+              <Link href="/register">Become a seller</Link>
+            </Button>
+          </Card>
+        )}
       </section>
     </div>
   );

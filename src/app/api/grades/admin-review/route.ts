@@ -3,13 +3,16 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { sendAdminReviewRequestEmail } from '@/lib/email/resend';
+import { getAdminReviewNotificationEmails } from '@/lib/auth/staff-emails';
 import { createReviewAction, upsertParseQueue } from '@/lib/grades/review-pipeline';
 import {
+  buildManualReviewRows,
   CourseReviewRow,
   sanitizeCourseReviewRows,
   summarizeReviewRows,
   toNormalizedCourses,
 } from '@/lib/grades/review-model';
+import { ACTIVE_VERIFICATION_STATUSES } from '@/lib/grades/verification-workflow';
 
 const requestSchema = z.object({
   verificationId: z.string().uuid(),
@@ -79,7 +82,6 @@ export async function POST(request: NextRequest) {
     const parsedCourseRows = parsed.data.courseRows
       ? sanitizeCourseReviewRows(parsed.data.courseRows as CourseReviewRow[])
       : null;
-    const parsedCourseSummary = parsedCourseRows ? summarizeReviewRows(parsedCourseRows) : null;
     if (!ownershipConfirmed) {
       return NextResponse.json(
         {
@@ -96,7 +98,7 @@ export async function POST(request: NextRequest) {
     const { data: verification, error: verificationError } = await adminClient
       .from('grade_verifications')
       .select(
-        'id, user_id, status, confirmation_required, auto_approval_eligible, created_at, transcript_filename, transcript_storage_bucket, transcript_storage_path'
+        'id, user_id, status, submission_type, confirmation_required, auto_approval_eligible, manual_courses, review_rows, created_at, transcript_filename, transcript_storage_bucket, transcript_storage_path'
       )
       .eq('id', verificationId)
       .maybeSingle();
@@ -119,19 +121,30 @@ export async function POST(request: NextRequest) {
     const canRequestFromManualRequired = verification.status === 'manual_required';
     const canRequestFromPendingConfirmation =
       verification.status === 'pending_review' && Boolean(verification.confirmation_required);
-    if (!canRequestFromManualRequired && !canRequestFromPendingConfirmation) {
+    const canRequestFromManualSubmission =
+      verification.status === 'pending_review' &&
+      verification.submission_type === 'manual' &&
+      Array.isArray(verification.manual_courses) &&
+      verification.manual_courses.length > 0;
+    if (!canRequestFromManualRequired && !canRequestFromPendingConfirmation && !canRequestFromManualSubmission) {
       return NextResponse.json(
         {
           error: {
             code: 'INVALID_STATE',
-            message: 'Admin review can only be requested during manual input or pending confirmation.',
+            message: 'Admin review can only be requested during manual input, pending confirmation, or after manual grade entry.',
           },
         },
         { status: 400 }
       );
     }
 
-    if (canRequestFromPendingConfirmation && (!parsedCourseSummary || !parsedCourseSummary.hasNeedsReview)) {
+    let effectiveCourseRows = parsedCourseRows;
+    if (!effectiveCourseRows && Array.isArray(verification.manual_courses) && verification.manual_courses.length > 0) {
+      effectiveCourseRows = buildManualReviewRows(verification.manual_courses);
+    }
+    const effectiveCourseSummary = effectiveCourseRows ? summarizeReviewRows(effectiveCourseRows) : null;
+
+    if (canRequestFromPendingConfirmation && (!effectiveCourseSummary || !effectiveCourseSummary.hasNeedsReview)) {
       const requiresRiskReview = verification.auto_approval_eligible === false;
       if (!requiresRiskReview) {
         return NextResponse.json(
@@ -146,24 +159,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!verification.transcript_storage_bucket || !verification.transcript_storage_path) {
-      return NextResponse.json(
-        {
-          error: {
-            code: 'TRANSCRIPT_NOT_AVAILABLE',
-            message:
-              'Transcript file is no longer available for manual review. Please upload your transcript again and then request review.',
+    if (
+      !verification.transcript_storage_bucket ||
+      !verification.transcript_storage_path
+    ) {
+      if (!canRequestFromManualSubmission) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'TRANSCRIPT_NOT_AVAILABLE',
+              message:
+                'Transcript file is no longer available for manual review. Please upload your transcript again and then request review.',
+            },
           },
-        },
-        { status: 409 }
-      );
+          { status: 409 }
+        );
+      }
     }
 
     const { data: existingRequest, error: existingRequestError } = await adminClient
       .from('admin_review_requests')
       .select('id, status')
       .eq('upload_id', verificationId)
-      .in('status', ['pending', 'reviewing'])
+      .in('status', ACTIVE_VERIFICATION_STATUSES)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -231,14 +249,14 @@ export async function POST(request: NextRequest) {
       console.error('Admin review verification status update error:', verificationStatusUpdateError);
     }
 
-    if (canRequestFromPendingConfirmation && parsedCourseRows) {
+    if (effectiveCourseRows && (canRequestFromPendingConfirmation || canRequestFromManualSubmission || canRequestFromManualRequired)) {
       const { error: verificationUpdateError } = await adminClient
         .from('grade_verifications')
         .update({
-          manual_courses: toNormalizedCourses(parsedCourseRows),
-          review_rows: parsedCourseRows,
-          submission_type: 'pdf_manual',
+          manual_courses: toNormalizedCourses(effectiveCourseRows),
+          review_rows: effectiveCourseRows,
           confirmation_required: false,
+          ...(canRequestFromPendingConfirmation ? { submission_type: 'pdf_manual' } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', verificationId);
@@ -253,7 +271,7 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         verificationStatus: 'pending_review',
         extractionConfidence: 0,
-        aiResultJson: parsedCourseRows ? { rows: parsedCourseRows, source: 'user_review_request' } : null,
+        aiResultJson: effectiveCourseRows ? { rows: effectiveCourseRows, source: 'user_review_request' } : null,
         parserSource: 'manual_review_request',
         failureReason: ISSUE_LABELS[issueType],
       });
@@ -283,8 +301,8 @@ export async function POST(request: NextRequest) {
       console.error('Admin review queue update error:', queueError);
     }
 
-    const adminReviewEmail = process.env.ADMIN_REVIEW_EMAIL?.trim();
-    if (adminReviewEmail) {
+    const adminReviewEmails = getAdminReviewNotificationEmails();
+    if (adminReviewEmails.length > 0) {
       const transcriptId = buildTranscriptId(verification.id, verification.created_at);
       const uploadDate = new Date(verification.created_at).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -293,7 +311,7 @@ export async function POST(request: NextRequest) {
       });
 
       void sendAdminReviewRequestEmail({
-        adminEmail: adminReviewEmail,
+        adminEmail: adminReviewEmails,
         studentName: profile?.full_name || user.email || 'Student',
         studentEmail: user.email || profile?.email || 'Unknown',
         university: profile?.school || 'HKUST',

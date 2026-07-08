@@ -7,6 +7,7 @@ import {
   isValidEmail,
   isValidPassword,
 } from '@/lib/auth/utils';
+import { staffEmailExceptionMessage } from '@/lib/auth/staff-emails';
 import {
   replaceVerificationToken,
   resolveUserForVerification,
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
           error: {
             code: 'INVALID_DOMAIN',
             message:
-              'Only @ust.hk or @connect.ust.hk email addresses are allowed (except support@ustudy.dev and admin@ustudy.dev).',
+              `Only @ust.hk or @connect.ust.hk email addresses are allowed (except ${staffEmailExceptionMessage()}).`,
           },
         },
         { status: 400 }

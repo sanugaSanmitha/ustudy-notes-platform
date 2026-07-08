@@ -1,4 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
+import { enrichCourseRow } from '@/lib/courses/catalog';
 import { normalizeCourseCode, normalizeCourseName, normalizeGrade } from '@/lib/grades/review-model';
 
 type CourseRow = {
@@ -105,15 +106,19 @@ export async function syncVerifiedCoursesForApproval(verificationId: string, use
     return { synced: 0 };
   }
 
-  const courses = extractCoursesFromVerification(verification)
-    .map((course) => ({
+  const courses = [];
+  for (const course of extractCoursesFromVerification(verification)) {
+    const normalized = {
       courseCode: normalizeCourseCode(course.courseCode || ''),
       courseName: normalizeCourseName(course.courseName),
       grade: normalizeGrade(course.grade || ''),
       academicYear: course.academicYear || null,
       semester: course.semester || null,
-    }))
-    .filter((course) => course.courseCode && course.grade);
+    };
+    if (!normalized.courseCode || !normalized.grade) continue;
+    const enriched = await enrichCourseRow(normalized);
+    courses.push(enriched);
+  }
 
   const uniqueCourses = new Map<string, (typeof courses)[number]>();
   for (const course of courses) {

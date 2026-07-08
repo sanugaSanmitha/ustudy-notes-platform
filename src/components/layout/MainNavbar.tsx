@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { BookOpen, LogOut, ShieldCheck, ShoppingCart, Upload, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
@@ -15,7 +15,6 @@ const PUBLIC_LINKS = [
 
 export function MainNavbar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { isLoggedIn, isReviewer, sellerNavLink } = useSellerNav();
 
   const navLinks = isLoggedIn
@@ -34,9 +33,8 @@ export function MainNavbar() {
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    window.location.assign('/login');
   };
 
   return (

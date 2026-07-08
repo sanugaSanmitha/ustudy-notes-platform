@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CourseCodeInput } from '@/components/courses/course-code-input';
+import { MANUAL_SUBMISSION_GRADES, isValidManualSubmissionGrade } from '@/lib/grades/course-validation';
 import { createClient } from '@/lib/supabase/client';
 
 type ParsedCourse = {
@@ -367,6 +369,11 @@ export default function GradeUploadPage() {
       return;
     }
 
+    if (sanitizedCourses.some((course) => !isValidManualSubmissionGrade(course.grade))) {
+      setError('Each grade must be A+, A, A-, B+, B, or B-.');
+      return;
+    }
+
     setManualSubmitting(true);
 
     try {
@@ -429,7 +436,17 @@ export default function GradeUploadPage() {
           message: adminMessage.trim() || undefined,
           externalTranscriptUrl: adminExternalTranscriptUrl.trim() || undefined,
           ownershipConfirmed,
-          courseRows: reviewVerificationId ? reviewRows : undefined,
+          courseRows: reviewVerificationId
+            ? reviewRows
+            : manualCourses
+                .filter((course) => course.courseCode.trim() && course.grade.trim())
+                .map((course) => ({
+                  source: 'user_added' as const,
+                  edited: true,
+                  courseCode: course.courseCode.trim(),
+                  courseName: course.courseName.trim(),
+                  grade: course.grade.trim(),
+                })),
         }),
       });
       const result = await response.json().catch(() => null);
@@ -580,9 +597,25 @@ export default function GradeUploadPage() {
                       </Button>
                     </div>
                     <div className="grid gap-2 md:grid-cols-3">
-                      <Input
+                      <CourseCodeInput
                         value={row.courseCode}
-                        onChange={(event) => handleReviewRowChange(row.id, 'courseCode', event.target.value)}
+                        onChange={(value) => handleReviewRowChange(row.id, 'courseCode', value)}
+                        onCourseSelect={(course) => {
+                          setReviewRows((prev) =>
+                            prev.map((item) => {
+                              if (item.id !== row.id) return item;
+                              const updated = {
+                                ...item,
+                                courseCode: course.courseCode,
+                                courseName: item.courseName.trim() ? item.courseName : course.courseTitle,
+                              };
+                              if (item.source === 'user_added') {
+                                return { ...updated, rowState: 'orange' as const, edited: false };
+                              }
+                              return { ...updated, rowState: 'purple' as const, edited: true };
+                            })
+                          );
+                        }}
                         placeholder="COMP1021"
                         disabled={reviewSaving || adminRequestSubmitting}
                       />
@@ -657,9 +690,22 @@ export default function GradeUploadPage() {
               <div key={`manual-course-${index}`} className="grid gap-3 rounded-md border border-slate-200 p-3 md:grid-cols-[1fr_1fr_140px_auto]">
                 <div>
                   <Label className="mb-1 block text-xs font-medium text-slate-700">Course Code</Label>
-                  <Input
+                  <CourseCodeInput
                     value={course.courseCode}
-                    onChange={(event) => handleCourseChange(index, 'courseCode', event.target.value)}
+                    onChange={(value) => handleCourseChange(index, 'courseCode', value)}
+                    onCourseSelect={(selected) => {
+                      setManualCourses((prev) =>
+                        prev.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? {
+                                ...item,
+                                courseCode: selected.courseCode,
+                                courseName: item.courseName.trim() ? item.courseName : selected.courseTitle,
+                              }
+                            : item
+                        )
+                      );
+                    }}
                     placeholder="COMP1021"
                     disabled={manualSubmitting}
                   />
@@ -675,12 +721,19 @@ export default function GradeUploadPage() {
                 </div>
                 <div>
                   <Label className="mb-1 block text-xs font-medium text-slate-700">Grade</Label>
-                  <Input
+                  <select
                     value={course.grade}
                     onChange={(event) => handleCourseChange(index, 'grade', event.target.value)}
-                    placeholder="A-"
                     disabled={manualSubmitting}
-                  />
+                    className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">Select grade</option>
+                    {MANUAL_SUBMISSION_GRADES.map((grade) => (
+                      <option key={grade} value={grade}>
+                        {grade}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="flex items-end">
                   <Button

@@ -92,7 +92,7 @@ export async function createReviewAction(params: {
   queueId?: string | null;
   reviewRequestId?: string | null;
   actorUserId?: string | null;
-  actorRole: 'support' | 'admin' | 'system';
+  actorRole: 'support' | 'admin' | 'assistant' | 'system';
   actionType: string;
   fromStatus?: string | null;
   toStatus?: string | null;

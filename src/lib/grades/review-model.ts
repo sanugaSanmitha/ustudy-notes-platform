@@ -32,6 +32,42 @@ export function normalizeGrade(value: string) {
   return value.trim().toUpperCase();
 }
 
+export function buildManualReviewRows(courses: BasicCourse[]): CourseReviewRow[] {
+  return courses.map((course) => ({
+    id: randomUUID(),
+    source: 'user_added' as const,
+    rowState: 'orange' as const,
+    edited: true,
+    confidence: null,
+    courseCode: normalizeCourseCode(course.courseCode),
+    courseName: normalizeCourseName(course.courseName),
+    grade: normalizeGrade(course.grade),
+  }));
+}
+
+export function resolveVerificationReviewRows(verification: {
+  review_rows?: CourseReviewRow[] | null;
+  manual_courses?: BasicCourse[] | null;
+  parsed_courses?: BasicCourse[] | null;
+}): CourseReviewRow[] {
+  const reviewRows = verification.review_rows;
+  if (Array.isArray(reviewRows) && reviewRows.length > 0) {
+    return sanitizeCourseReviewRows(reviewRows as CourseReviewRow[]);
+  }
+
+  const manualCourses = verification.manual_courses;
+  if (Array.isArray(manualCourses) && manualCourses.length > 0) {
+    return buildManualReviewRows(manualCourses);
+  }
+
+  const parsedCourses = verification.parsed_courses;
+  if (Array.isArray(parsedCourses) && parsedCourses.length > 0) {
+    return buildInitialReviewRows(parsedCourses, 0);
+  }
+
+  return [];
+}
+
 export function buildInitialReviewRows(courses: BasicCourse[], extractionConfidence: number): CourseReviewRow[] {
   return courses.map((course) => ({
     id: randomUUID(),

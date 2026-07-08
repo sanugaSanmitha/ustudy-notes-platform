@@ -10,11 +10,7 @@ import { PasswordInput } from '@/components/ui/password-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import type { RegisterPayload } from '@/types/auth';
-
-const ALLOWED_NON_HKUST_EMAILS = new Set([
-  'support@ustudy.dev',
-  'admin@ustudy.dev',
-]);
+import { isStaffEmail, staffEmailExceptionMessage } from '@/lib/auth/staff-emails';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -47,9 +43,9 @@ export default function RegisterPage() {
     }
 
     const normalizedEmail = formData.email.trim().toLowerCase();
-    if (!ALLOWED_NON_HKUST_EMAILS.has(normalizedEmail) && !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)) {
+    if (!isStaffEmail(normalizedEmail) && !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)) {
       setError(
-        'Only HKUST emails (@ust.hk or @connect.ust.hk) are allowed, except support@ustudy.dev and admin@ustudy.dev.'
+        `Only HKUST emails (@ust.hk or @connect.ust.hk) are allowed, except ${staffEmailExceptionMessage()}.`
       );
       setLoading(false);
       return;

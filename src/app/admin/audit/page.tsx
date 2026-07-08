@@ -20,8 +20,19 @@ const ACTION_FILTERS = [
   { value: 'admin_approved', label: 'Approved' },
   { value: 'admin_rejected', label: 'Rejected' },
   { value: 'review_claimed', label: 'Claimed' },
+  { value: 'review_assigned', label: 'Assigned' },
+  { value: 'review_reassigned', label: 'Reassigned' },
+  { value: 'review_unassigned', label: 'Unassigned' },
+  { value: 'reassignment_requested', label: 'Reassignment requested' },
+  { value: 'reassignment_approved', label: 'Reassignment approved' },
+  { value: 'reassignment_rejected', label: 'Reassignment denied' },
+  { value: 'request_more_info', label: 'Request info' },
+  { value: 'student_replied', label: 'Student replied' },
+  { value: 'priority_changed', label: 'Priority changed' },
+  { value: 'review_escalated', label: 'Escalated' },
   { value: 'admin_edited_courses', label: 'Course edits' },
   { value: 'review_takeover', label: 'Takeovers' },
+  { value: 'lock_released', label: 'Released' },
 ];
 
 export default function AdminAuditPage() {

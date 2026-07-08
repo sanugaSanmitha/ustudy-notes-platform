@@ -7,15 +7,29 @@ import { StatCard } from '@/components/admin/stat-card';
 import { QueueSummaryPanel } from '@/components/admin/queue-summary-panel';
 import { SupportQueueSummaryPanel } from '@/components/admin/support-queue-summary-panel';
 import { RecentActionsPanel } from '@/components/admin/recent-actions-panel';
+import {
+  VerificationAnalyticsCharts,
+  type VerificationAnalyticsData,
+} from '@/components/admin/verification-analytics-charts';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 
 type DashboardData = {
-  stats: { pending: number; reviewing: number; approvedToday: number; rejectedToday: number };
+  stats: {
+    pending: number;
+    reviewing: number;
+    approvedToday: number;
+    rejectedToday: number;
+    waitingAssignment?: number;
+    waitingStudent?: number;
+    pendingReassignment?: number;
+    escalated?: number;
+  };
   queueSummary: Array<Record<string, unknown>>;
   recentActions: Array<Record<string, unknown>>;
   supportStats: { open: number; underReview: number; fastQueue: number; manualFallback: number };
   supportQueueSummary: Array<Record<string, unknown>>;
+  analytics: VerificationAnalyticsData | null;
 };
 
 export default function AdminDashboardPage() {
@@ -88,9 +102,15 @@ export default function AdminDashboardPage() {
         <div className="space-y-10">
           <section>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Verification Queue</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-8">
               <StatCard
-                label="Pending Review"
+                label="Waiting Assignment"
+                value={data.stats.waitingAssignment ?? 0}
+                accent="amber"
+                onClick={() => router.push('/admin/grades?status=waiting_assignment')}
+              />
+              <StatCard
+                label="Pending"
                 value={data.stats.pending}
                 accent="amber"
                 onClick={() => router.push('/admin/grades?status=pending')}
@@ -100,6 +120,24 @@ export default function AdminDashboardPage() {
                 value={data.stats.reviewing}
                 accent="neutral"
                 onClick={() => router.push('/admin/grades?status=reviewing')}
+              />
+              <StatCard
+                label="Waiting Student"
+                value={data.stats.waitingStudent ?? 0}
+                accent="amber"
+                onClick={() => router.push('/admin/grades?status=waiting_student')}
+              />
+              <StatCard
+                label="Pending Reassignment"
+                value={data.stats.pendingReassignment ?? 0}
+                accent="red"
+                onClick={() => router.push('/admin/grades?status=pending_reassignment')}
+              />
+              <StatCard
+                label="Escalated"
+                value={data.stats.escalated ?? 0}
+                accent="red"
+                onClick={() => router.push('/admin/grades?status=escalated')}
               />
               <StatCard
                 label="Approved Today"
@@ -114,6 +152,12 @@ export default function AdminDashboardPage() {
                 onClick={() => router.push('/admin/grades?status=rejected')}
               />
             </div>
+
+            {data.analytics && (
+              <div className="mt-6">
+                <VerificationAnalyticsCharts data={data.analytics} />
+              </div>
+            )}
 
             <div className="mt-6 grid gap-6 lg:grid-cols-3">
               <div className="lg:col-span-2">

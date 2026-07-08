@@ -1,7 +1,14 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { isAdminEmail } from '@/lib/auth/admin-access';
+import {
+  isAuthorizedAdmin,
+  isAuthorizedAssistant,
+  isAuthorizedSupport,
+  isAuthorizedVerificationReviewer,
+  resolvePortalLandingPath,
+  type AppRole,
+} from '@/lib/auth/admin-access';
 
 const PROTECTED_PATHS = [
   '/complete-profile',
@@ -17,10 +24,17 @@ const PROTECTED_PATHS = [
 ];
 
 const AUTH_PATHS = ['/register', '/login', '/verify-email'];
-type AppRole = 'user' | 'support' | 'admin';
 
 function isAdminUser(email: string | null | undefined, roles: AppRole[]) {
-  return isAdminEmail(email) || roles.includes('admin');
+  return isAuthorizedAdmin(email, roles);
+}
+
+function isAssistantUser(email: string | null | undefined, roles: AppRole[]) {
+  return isAuthorizedAssistant(email, roles);
+}
+
+function isSupportUser(email: string | null | undefined, roles: AppRole[]) {
+  return isAuthorizedSupport(email, roles);
 }
 
 async function getUserRoles(
@@ -41,7 +55,7 @@ async function getUserRoles(
     .map((row: { role: string | null }) => row.role)
     .filter(
       (role: string | null): role is AppRole =>
-        role === 'user' || role === 'support' || role === 'admin'
+        role === 'user' || role === 'support' || role === 'admin' || role === 'assistant'
     );
 }
 
@@ -125,22 +139,29 @@ export async function middleware(request: NextRequest) {
 
   if (isAdminPath && user) {
     const isAdminSupportPath = pathname === '/admin/support' || pathname.startsWith('/admin/support/');
+    const isAdminGradesPath = pathname === '/admin/grades' || pathname.startsWith('/admin/grades/');
+    const isAdminDashboardPath = pathname === '/admin';
     const isAuthorizedAdminUser = isAdminUser(user.email, userRoles);
-    const isAuthorizedSupportUser = userRoles.includes('support');
+    const isAuthorizedAssistantUser = isAssistantUser(user.email, userRoles);
+    const isAuthorizedSupportUser = isSupportUser(user.email, userRoles);
 
     if (isAdminSupportPath) {
       if (!isAuthorizedAdminUser && !isAuthorizedSupportUser) {
         return NextResponse.redirect(new URL('/', request.url));
       }
+    } else if (isAdminGradesPath) {
+      if (!isAuthorizedVerificationReviewer(user.email, userRoles)) {
+        return NextResponse.redirect(new URL('/', request.url));
+      }
+    } else if (isAdminDashboardPath && !isAuthorizedAdminUser && (isAuthorizedAssistantUser || isAuthorizedSupportUser)) {
+      return NextResponse.redirect(new URL('/admin/grades', request.url));
     } else if (!isAuthorizedAdminUser) {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }
 
   if (isSupportPath && user) {
-    const isAuthorizedSupport =
-      isAdminUser(user.email, userRoles) || userRoles.includes('support');
-    if (!isAuthorizedSupport) {
+    if (!isSupportUser(user.email, userRoles)) {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }
@@ -150,12 +171,23 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isCompleteProfilePath && user && isProfileCompleted) {
-    const landing = isAdminUser(user.email, userRoles) ? '/admin' : '/';
+    const landing = resolvePortalLandingPath({
+      profileCompleted: true,
+      email: user.email,
+      roles: userRoles,
+    });
     return NextResponse.redirect(new URL(landing, request.url));
   }
 
-  if (isHomePath && user && isProfileCompleted && isAdminUser(user.email, userRoles)) {
-    return NextResponse.redirect(new URL('/admin', request.url));
+  if (isHomePath && user && isProfileCompleted) {
+    const landing = resolvePortalLandingPath({
+      profileCompleted: true,
+      email: user.email,
+      roles: userRoles,
+    });
+    if (landing !== '/') {
+      return NextResponse.redirect(new URL(landing, request.url));
+    }
   }
 
   if (isAuthPath && user) {
@@ -166,11 +198,11 @@ export async function middleware(request: NextRequest) {
       return supabaseResponse;
     }
 
-    const destination = !isProfileCompleted
-      ? '/complete-profile'
-      : isAdminUser(user.email, userRoles)
-        ? '/admin'
-        : '/';
+    const destination = resolvePortalLandingPath({
+      profileCompleted: isProfileCompleted,
+      email: user.email,
+      roles: userRoles,
+    });
     return NextResponse.redirect(new URL(destination, request.url));
   }
 

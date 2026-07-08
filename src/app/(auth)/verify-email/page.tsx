@@ -5,12 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { isStaffEmail, staffEmailExceptionMessage } from '@/lib/auth/staff-emails';
 
 const PENDING_EMAIL_KEY = 'pendingVerificationEmail';
-const ALLOWED_NON_HKUST_EMAILS = new Set([
-  'support@ustudy.dev',
-  'admin@ustudy.dev',
-]);
 const MAX_RESEND_ATTEMPTS_PER_DAY = 3;
 
 function formatSentAt(date: Date) {
@@ -163,9 +160,9 @@ export default function VerifyEmailPage() {
       return;
     }
 
-    if (!ALLOWED_NON_HKUST_EMAILS.has(normalizedEmail) && !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)) {
+    if (!isStaffEmail(normalizedEmail) && !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)) {
       setError(
-        'Only @ust.hk or @connect.ust.hk email addresses are allowed (except support@ustudy.dev and admin@ustudy.dev).'
+        `Only @ust.hk or @connect.ust.hk email addresses are allowed (except ${staffEmailExceptionMessage()}).`
       );
       setResendLoading(false);
       return;

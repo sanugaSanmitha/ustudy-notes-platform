@@ -1,4 +1,14 @@
 import type { CourseReviewRow } from '@/lib/grades/review-model';
+import { findUnknownCourseCodes } from '@/lib/courses/catalog';
+
+/** Grades allowed when a student submits courses manually after a failed parse. */
+export const MANUAL_SUBMISSION_GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'B-'] as const;
+
+const MANUAL_SUBMISSION_GRADE_SET = new Set<string>(MANUAL_SUBMISSION_GRADES);
+
+export function isValidManualSubmissionGrade(grade: string) {
+  return MANUAL_SUBMISSION_GRADE_SET.has(grade.trim().toUpperCase());
+}
 
 /** HKUST-style letter grades commonly seen on transcripts. */
 const HKUST_GRADES = new Set([
@@ -61,6 +71,28 @@ export function validateCourseRows(rows: CourseReviewRow[]): CourseValidationIss
     }
   }
 
+  return issues;
+}
+
+export async function validateCourseRowsAgainstCatalog(rows: CourseReviewRow[]): Promise<CourseValidationIssue[]> {
+  const codes = rows.map((row) => row.courseCode).filter(Boolean);
+  const unknownCodes = await findUnknownCourseCodes(codes);
+  if (unknownCodes.length === 0) {
+    return [];
+  }
+
+  const unknownSet = new Set(unknownCodes);
+  const issues: CourseValidationIssue[] = [];
+  for (const row of rows) {
+    const code = row.courseCode.trim().toUpperCase();
+    if (code && unknownSet.has(code)) {
+      issues.push({
+        rowId: row.id,
+        field: 'courseCode',
+        message: `${code} is not in the HKUST course catalog.`,
+      });
+    }
+  }
   return issues;
 }
 
