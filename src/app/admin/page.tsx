@@ -63,7 +63,7 @@ export default function AdminDashboardPage() {
     fetchDashboard();
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') fetchDashboard(true);
-    }, 30_000);
+    }, 60_000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
 

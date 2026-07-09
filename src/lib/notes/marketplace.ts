@@ -259,6 +259,17 @@ export async function getPublishedListingsForCourse(courseCode: string): Promise
 }
 
 export async function getPublishedListingById(listingId: string): Promise<EnrichedListing | null> {
+  return unstable_cache(
+    async () => fetchPublishedListingById(listingId),
+    [`published-listing-${listingId}`],
+    {
+      revalidate: MARKETPLACE_REVALIDATE_SECONDS,
+      tags: ['marketplace', `marketplace-listing-${listingId}`],
+    }
+  )();
+}
+
+async function fetchPublishedListingById(listingId: string): Promise<EnrichedListing | null> {
   const { data, error } = await adminClient
     .from('note_listings')
     .select(LISTING_SELECT)

@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { adminClient } from '@/lib/supabase/admin';
 import { normalizeCourseCode } from '@/lib/grades/review-model';
 
@@ -41,6 +42,16 @@ export async function searchCourses(params: CourseSearchParams = {}) {
   const dept = (params.dept || '').trim().toUpperCase();
   const limit = Math.min(50, Math.max(1, params.limit || 20));
   const offset = Math.max(0, params.offset || 0);
+
+  return unstable_cache(
+    () => searchCoursesUncached({ q, level, dept, limit, offset }),
+    ['course-search', q, level, dept, String(limit), String(offset)],
+    { revalidate: 3600, tags: ['course-catalog'] }
+  )();
+}
+
+async function searchCoursesUncached(params: Required<Pick<CourseSearchParams, 'q' | 'level' | 'dept' | 'limit' | 'offset'>>) {
+  const { q, level, dept, limit, offset } = params;
 
   let query = adminClient
     .from('courses')
@@ -108,6 +119,39 @@ export async function getCoursesByCode(courseCode: string) {
   };
 }
 
+export async function getCourseTitlesByCode(courseCodes: string[]) {
+  const codes = Array.from(
+    new Set(courseCodes.map((code) => normalizeCourseCode(code)).filter(Boolean))
+  ) as string[];
+
+  const titleByCode = new Map<string, string>();
+  if (codes.length === 0) {
+    return titleByCode;
+  }
+
+  const { data, error } = await adminClient
+    .from('courses')
+    .select('course_code, course_title')
+    .in('course_code', codes);
+
+  if (error) {
+    if (error.message.includes('relation "public.courses" does not exist')) {
+      return titleByCode;
+    }
+    throw error;
+  }
+
+  for (const code of codes) {
+    const rows = (data || []).filter((row) => normalizeCourseCode(row.course_code) === code) as CourseRow[];
+    const primary = pickPrimaryCourse(rows);
+    if (primary) {
+      titleByCode.set(code, primary.courseTitle);
+    }
+  }
+
+  return titleByCode;
+}
+
 export async function isKnownCourseCode(courseCode: string) {
   const code = normalizeCourseCode(courseCode);
   if (!code) return false;
@@ -143,29 +187,62 @@ export async function enrichCourseRow<T extends { courseCode: string; courseName
 }
 
 export async function enrichCourseRows<T extends { courseCode: string; courseName?: string }>(rows: T[]) {
-  const enriched: T[] = [];
-  for (const row of rows) {
-    enriched.push(await enrichCourseRow(row));
+  if (rows.length === 0) {
+    return rows;
   }
-  return enriched;
+
+  const titleByCode = await getCourseTitlesByCode(rows.map((row) => row.courseCode));
+
+  return rows.map((row) => {
+    const code = normalizeCourseCode(row.courseCode);
+    if (!code) {
+      return row;
+    }
+
+    const title = titleByCode.get(code);
+    if (!title) {
+      return { ...row, courseCode: code };
+    }
+
+    const existingName = (row.courseName || '').trim();
+    if (!existingName || existingName.toLowerCase() === 'exclusion(s)') {
+      return { ...row, courseCode: code, courseName: title };
+    }
+
+    return { ...row, courseCode: code };
+  });
 }
 
 export async function findUnknownCourseCodes(courseCodes: string[]) {
-  const unknown: string[] = [];
-  const seen = new Set<string>();
+  const normalizedCodes = Array.from(
+    new Set(
+      courseCodes
+        .map((raw) => normalizeCourseCode(raw))
+        .filter(Boolean)
+    )
+  ) as string[];
 
-  for (const raw of courseCodes) {
-    const code = normalizeCourseCode(raw);
-    if (!code || seen.has(code)) continue;
-    seen.add(code);
-
-    const known = await isKnownCourseCode(code);
-    if (!known) {
-      unknown.push(code);
-    }
+  if (normalizedCodes.length === 0) {
+    return [];
   }
 
-  return unknown;
+  const { data, error } = await adminClient
+    .from('courses')
+    .select('course_code')
+    .in('course_code', normalizedCodes);
+
+  if (error) {
+    if (error.message.includes('relation "public.courses" does not exist')) {
+      return normalizedCodes;
+    }
+    throw error;
+  }
+
+  const knownCodes = new Set(
+    (data || []).map((row) => normalizeCourseCode(row.course_code)).filter(Boolean)
+  );
+
+  return normalizedCodes.filter((code) => !knownCodes.has(code));
 }
 
 export { getPublishedListingsForCourse } from '@/lib/notes/marketplace';

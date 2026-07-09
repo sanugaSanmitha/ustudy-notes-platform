@@ -1,4 +1,4 @@
-import { getCoursesByCode } from '@/lib/courses/catalog';
+import { getCourseTitlesByCode } from '@/lib/courses/catalog';
 import { adminClient } from '@/lib/supabase/admin';
 import { extractMaterialTags } from '@/lib/notes/material-tags';
 
@@ -143,15 +143,15 @@ async function loadVerifiedGradeMap(listings: Array<{ user_id: string; course_co
   return gradeByUserCourse;
 }
 
-async function mapListingRow(
+function mapListingRow(
   row: ListingRow,
   usersById: Map<string, { email: string | null; full_name: string | null }>,
   gradeByUserCourse: Map<string, string>,
+  courseTitleByCode: Map<string, string>,
   includeReviewFields = false
-): Promise<AdminNoteListItem | AdminNoteListingDetail> {
+): AdminNoteListItem | AdminNoteListingDetail {
   const user = usersById.get(row.user_id);
   const reviewer = row.reviewed_by ? usersById.get(row.reviewed_by) : null;
-  const { primary } = await getCoursesByCode(row.course_code);
   const fileNames = Array.isArray(row.file_names) ? row.file_names : [];
 
   const base: AdminNoteListItem = {
@@ -160,7 +160,7 @@ async function mapListingRow(
     userEmail: user?.email || null,
     userName: user?.full_name || null,
     courseCode: row.course_code,
-    courseTitle: primary?.courseTitle || null,
+    courseTitle: courseTitleByCode.get(row.course_code) || null,
     verifiedGrade: gradeByUserCourse.get(`${row.user_id}:${row.course_code}`) || null,
     title: row.title,
     description: row.description,
@@ -277,11 +277,13 @@ export async function listAdminNoteListings(options: {
   const userIds = Array.from(
     new Set(rows.flatMap((row) => [row.user_id, row.reviewed_by].filter(Boolean) as string[]))
   );
-  const [usersById, gradeByUserCourse] = await Promise.all([loadUserMap(userIds), loadVerifiedGradeMap(rows)]);
+  const [usersById, gradeByUserCourse, courseTitleByCode] = await Promise.all([
+    loadUserMap(userIds),
+    loadVerifiedGradeMap(rows),
+    getCourseTitlesByCode(rows.map((row) => row.course_code)),
+  ]);
 
-  const listings = await Promise.all(
-    rows.map((row) => mapListingRow(row, usersById, gradeByUserCourse))
-  );
+  const listings = rows.map((row) => mapListingRow(row, usersById, gradeByUserCourse, courseTitleByCode));
 
   const total = count || 0;
 
@@ -318,12 +320,13 @@ export async function fetchAdminNoteListingDetail(listingId: string) {
 
   const row = data as ListingRow;
   const userIds = [row.user_id, row.reviewed_by].filter(Boolean) as string[];
-  const [usersById, gradeByUserCourse] = await Promise.all([
+  const [usersById, gradeByUserCourse, courseTitleByCode] = await Promise.all([
     loadUserMap(userIds),
     loadVerifiedGradeMap([row]),
+    getCourseTitlesByCode([row.course_code]),
   ]);
 
-  const listing = (await mapListingRow(row, usersById, gradeByUserCourse, true)) as AdminNoteListingDetail;
+  const listing = mapListingRow(row, usersById, gradeByUserCourse, courseTitleByCode, true) as AdminNoteListingDetail;
 
   return { ok: true as const, listing };
 }

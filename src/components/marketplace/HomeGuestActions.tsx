@@ -1,19 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { createClient } from '@/lib/supabase/client';
+import { useSellerNav } from '@/components/layout/NavAuthProvider';
 
 export function HomeGuestActions() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setIsLoggedIn(Boolean(user));
-    });
-  }, []);
+  const { isLoggedIn } = useSellerNav();
 
   if (isLoggedIn !== false) {
     return null;

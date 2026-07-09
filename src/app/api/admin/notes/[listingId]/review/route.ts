@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAdminUser } from '@/lib/grades/admin';
 import { applyRateLimitResponse, requireAdminCsrf } from '@/lib/api/admin-guard';
 import { reviewAdminNoteListing } from '@/lib/notes/admin-notes';
+import { revalidateMarketplaceCaches } from '@/lib/notes/revalidate-marketplace';
 import { NOTE_REJECT_REASON_OPTIONS, noteRejectReasonLabel, type NoteRejectReason } from '@/lib/notes/reject-reasons';
 import { sendNoteListingApprovedEmail, sendNoteListingRejectedEmail } from '@/lib/email/resend';
 import { adminClient } from '@/lib/supabase/admin';
@@ -148,6 +149,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         });
       }
     }
+  }
+
+  if (action === 'approve') {
+    revalidateMarketplaceCaches(result.listing.courseCode, result.updated.id);
+  } else {
+    revalidateMarketplaceCaches(undefined, result.updated.id);
   }
 
   return NextResponse.json(

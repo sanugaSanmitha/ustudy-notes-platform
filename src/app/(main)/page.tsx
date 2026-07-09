@@ -1,5 +1,4 @@
 import { Suspense } from 'react';
-import { CourseSearchBar } from '@/components/courses/course-search-bar';
 import { HomeGuestActions } from '@/components/marketplace/HomeGuestActions';
 import { MarketplaceSection } from '@/components/marketplace/MarketplaceSection';
 import { MarketplaceSkeleton } from '@/components/marketplace/MarketplaceSkeleton';
@@ -17,10 +16,6 @@ export default function HomePage() {
           Browse verified notes by course, semester, and grade. Buy securely and download instantly.
         </p>
         <HomeGuestActions />
-      </section>
-
-      <section className="mb-10">
-        <CourseSearchBar />
       </section>
 
       <Suspense fallback={<MarketplaceSkeleton />}>

@@ -6,6 +6,7 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['pdf-parse', 'pdfjs-dist'],
+    optimizePackageImports: ['lucide-react', 'recharts'],
   },
 };
 

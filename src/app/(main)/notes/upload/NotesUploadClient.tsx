@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import JSZip from 'jszip';
 import { Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -189,6 +188,7 @@ export default function NotesUploadPage() {
     setZipPreviewLoading(true);
     setError('');
     try {
+      const { default: JSZip } = await import('jszip');
       const zip = await JSZip.loadAsync(await file.arrayBuffer());
       const names = Object.keys(zip.files)
         .filter((name) => !zip.files[name].dir)

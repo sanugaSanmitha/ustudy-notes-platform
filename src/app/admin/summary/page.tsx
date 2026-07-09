@@ -1,17 +1,25 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AdminShell } from '@/components/admin/admin-shell';
 import { StatCard } from '@/components/admin/stat-card';
-import {
-  VerificationAnalyticsCharts,
-  type VerificationAnalyticsData,
-} from '@/components/admin/verification-analytics-charts';
+import type { VerificationAnalyticsData } from '@/components/admin/verification-analytics-charts';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import type { SummaryDatePreset } from '@/lib/grades/summary-date-range';
 import { Download, RefreshCw } from 'lucide-react';
+
+const VerificationAnalyticsCharts = dynamic(
+  () =>
+    import('@/components/admin/verification-analytics-charts').then((module) => ({
+      default: module.VerificationAnalyticsCharts,
+    })),
+  {
+    loading: () => <div className="h-72 animate-pulse rounded-lg bg-slate-100" />,
+  }
+);
 
 type SummaryCards = {
   totalVerifications: number;

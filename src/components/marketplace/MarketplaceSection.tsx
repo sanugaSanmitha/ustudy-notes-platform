@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CourseSearchBar } from '@/components/courses/course-search-bar';
 import { CourseCodePills } from '@/components/marketplace/CourseCodePills';
 import { FeaturedCoursesCarousel } from '@/components/marketplace/FeaturedCoursesCarousel';
 import { NoteListingCard } from '@/components/notes/NoteListingCard';
@@ -18,6 +19,10 @@ export async function MarketplaceSection() {
           <Link href="/courses" className="text-sm text-blue-600 hover:underline">
             Browse all courses
           </Link>
+        </div>
+
+        <div className="mb-8">
+          <CourseSearchBar />
         </div>
 
         <Card className="flex flex-col items-center justify-center border-dashed px-6 py-16 text-center">
@@ -40,6 +45,11 @@ export async function MarketplaceSection() {
   return (
     <>
       <FeaturedCoursesCarousel courses={featuredCourses} />
+
+      <section className="mb-10">
+        <CourseSearchBar />
+      </section>
+
       <CourseCodePills courses={courseSummaries} />
 
       {latestListings.length > 0 && (

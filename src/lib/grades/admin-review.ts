@@ -63,8 +63,6 @@ export async function listAdminReviewRequests(
     pageSize?: number;
   } = {}
 ) {
-  await expireStaleReviewLocks();
-
   const {
     search = '',
     risk = 'all',

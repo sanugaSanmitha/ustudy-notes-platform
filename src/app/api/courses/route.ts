@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { searchCourses } from '@/lib/courses/catalog';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600;
 
 export async function GET(request: Request) {
   try {
@@ -45,7 +45,12 @@ export async function GET(request: Request) {
           },
         },
       },
-      { status: 200 }
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      }
     );
   } catch (error) {
     console.error('Courses search error:', error);

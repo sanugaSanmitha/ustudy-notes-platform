@@ -1,73 +1,60 @@
-'use client';
-
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { CourseSearchBar } from '@/components/courses/course-search-bar';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { searchCourses } from '@/lib/courses/catalog';
 
-type CatalogCourse = {
-  courseCode: string;
-  courseTitle: string;
-  level: 'UG' | 'PG';
+export const revalidate = 3600;
+
+type CoursesPageProps = {
+  searchParams: {
+    q?: string;
+    level?: string;
+    page?: string;
+  };
 };
 
-export default function CoursesPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const q = searchParams.get('q') || '';
-  const level = searchParams.get('level') || 'all';
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+function buildCoursesQuery(
+  current: CoursesPageProps['searchParams'],
+  overrides: { level?: string; page?: number }
+) {
+  const params = new URLSearchParams();
+  const q = (current.q || '').trim();
+  const level = overrides.level ?? current.level ?? 'all';
+  const page = overrides.page ?? Math.max(1, parseInt(current.page || '1', 10) || 1);
 
-  const [courses, setCourses] = useState<CatalogCourse[]>([]);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  if (q) {
+    params.set('q', q);
+  }
+  if (level !== 'all') {
+    params.set('level', level);
+  }
+  if (page > 1) {
+    params.set('page', String(page));
+  }
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const params = new URLSearchParams();
-        if (q) params.set('q', q);
-        if (level !== 'all') params.set('level', level);
-        params.set('page', String(page));
-        params.set('pageSize', '25');
+  const query = params.toString();
+  return query ? `/courses?${query}` : '/courses';
+}
 
-        const response = await fetch(`/api/courses?${params.toString()}`, { cache: 'no-store' });
-        const result = await response.json().catch(() => null);
-        if (!response.ok) {
-          setError(result?.error?.message || 'Failed to load courses.');
-          setCourses([]);
-          return;
-        }
-        setCourses(result?.data?.courses || []);
-        setTotal(result?.data?.pagination?.total || 0);
-        setTotalPages(result?.data?.pagination?.totalPages || 1);
-      } catch {
-        setError('Unable to load courses.');
-        setCourses([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+export default async function CoursesPage({ searchParams }: CoursesPageProps) {
+  const q = (searchParams.q || '').trim();
+  const levelParam = searchParams.level || 'all';
+  const level = levelParam === 'UG' || levelParam === 'PG' ? levelParam : ('all' as const);
+  const page = Math.max(1, parseInt(searchParams.page || '1', 10) || 1);
+  const pageSize = 25;
 
-    void load();
-  }, [q, level, page]);
+  const result = await searchCourses({
+    q,
+    level,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  });
 
-  const setLevel = (nextLevel: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (nextLevel === 'all') {
-      params.delete('level');
-    } else {
-      params.set('level', nextLevel);
-    }
-    params.delete('page');
-    router.push(`/courses?${params.toString()}`);
-  };
+  const courses = result.ok ? result.courses : [];
+  const total = result.ok ? result.total : 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const error = result.ok ? '' : 'Course catalog is not ready. Run docs/migrations/019_courses_catalog.sql and npm run seed:courses.';
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -87,58 +74,49 @@ export default function CoursesPage() {
         {(['all', 'UG', 'PG'] as const).map((option) => (
           <Button
             key={option}
-            type="button"
+            asChild
             size="sm"
             variant={level === option ? 'default' : 'outline'}
             className={level === option ? 'bg-blue-600 hover:bg-blue-700' : ''}
-            onClick={() => setLevel(option)}
           >
-            {option === 'all' ? 'All levels' : option}
+            <Link href={buildCoursesQuery(searchParams, { level: option, page: 1 })}>
+              {option === 'all' ? 'All levels' : option}
+            </Link>
           </Button>
         ))}
       </div>
 
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          {loading ? 'Loading…' : `${total.toLocaleString()} course${total === 1 ? '' : 's'} found`}
+          {total.toLocaleString()} course{total === 1 ? '' : 's'} found
         </p>
         {totalPages > 1 && (
           <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={page <= 1 || loading}
-              onClick={() => {
-                const params = new URLSearchParams(searchParams.toString());
-                params.set('page', String(page - 1));
-                router.push(`/courses?${params.toString()}`);
-              }}
-            >
-              Previous
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={page >= totalPages || loading}
-              onClick={() => {
-                const params = new URLSearchParams(searchParams.toString());
-                params.set('page', String(page + 1));
-                router.push(`/courses?${params.toString()}`);
-              }}
-            >
-              Next
-            </Button>
+            {page > 1 ? (
+              <Button asChild size="sm" variant="outline">
+                <Link href={buildCoursesQuery(searchParams, { page: page - 1 })}>Previous</Link>
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" disabled>
+                Previous
+              </Button>
+            )}
+            {page < totalPages ? (
+              <Button asChild size="sm" variant="outline">
+                <Link href={buildCoursesQuery(searchParams, { page: page + 1 })}>Next</Link>
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" disabled>
+                Next
+              </Button>
+            )}
           </div>
         )}
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
-      {loading ? (
-        <Card className="p-8 text-center text-sm text-slate-500">Loading courses…</Card>
-      ) : courses.length === 0 ? (
+      {courses.length === 0 ? (
         <Card className="p-8 text-center text-sm text-slate-500">No courses matched your search.</Card>
       ) : (
         <div className="space-y-2">
