@@ -7,6 +7,7 @@ import { deleteTranscriptFile } from '@/lib/grades/transcript-storage';
 import { enrichCourseRows } from '@/lib/courses/catalog';
 import { isValidManualSubmissionGrade } from '@/lib/grades/course-validation';
 import { buildManualReviewRows } from '@/lib/grades/review-model';
+import { fetchVerifiedCourseCodeSet, filterCoursesNotAlreadyVerified } from '@/lib/grades/verified-courses';
 
 const manualSubmissionSchema = z.object({
   verificationId: z.string().uuid(),
@@ -88,12 +89,35 @@ export async function POST(request: NextRequest) {
       }))
     );
 
-    const reviewRows = buildManualReviewRows(normalizedCourses);
+    const { data: userProfile } = await adminClient
+      .from('users')
+      .select('is_seller')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    let coursesToSubmit = normalizedCourses;
+    if (userProfile?.is_seller) {
+      const existingCodes = await fetchVerifiedCourseCodeSet(user.id);
+      coursesToSubmit = filterCoursesNotAlreadyVerified(normalizedCourses, existingCodes);
+      if (coursesToSubmit.length === 0) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'NO_NEW_GRADES',
+              message: 'All submitted courses are already on your verified record. No new grades were added.',
+            },
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    const reviewRows = buildManualReviewRows(coursesToSubmit);
 
     const { data: updated, error: updateError } = await adminClient
       .from('grade_verifications')
       .update({
-        manual_courses: normalizedCourses,
+        manual_courses: coursesToSubmit,
         review_rows: reviewRows,
         screenshot_url: screenshotUrl || null,
         notes: notes || null,
@@ -147,7 +171,7 @@ export async function POST(request: NextRequest) {
         toStatus: 'pending_review',
         notes: notes || null,
         afterPayload: {
-          manualCourseCount: normalizedCourses.length,
+          manualCourseCount: coursesToSubmit.length,
           screenshotProvided: Boolean(screenshotUrl),
         },
       });

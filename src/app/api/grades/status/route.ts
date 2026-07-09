@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
-import { gradeVerificationConfig } from '@/lib/grades/config';
+import { gradeVerificationConfig, formatReuploadCooldownRemaining } from '@/lib/grades/config';
 import { fetchOpenAdminReviewForStudent } from '@/lib/grades/student-reply';
 import { STATUS_LABELS, type VerificationStatus } from '@/lib/grades/verification-workflow';
 
@@ -81,6 +81,30 @@ export async function GET() {
       }
     }
 
+    const { data: userProfile } = await adminClient
+      .from('users')
+      .select('is_seller')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const isVerifiedSeller = Boolean(userProfile?.is_seller);
+    const hasActiveVerification =
+      latest?.status === 'pending_review' || latest?.status === 'manual_required';
+    let reuploadCooldownRemainingMs = 0;
+    let reuploadAvailableAt: string | null = null;
+    let canReuploadTranscript = !isVerifiedSeller;
+
+    if (isVerifiedSeller) {
+      canReuploadTranscript = !hasActiveVerification;
+      if (!hasActiveVerification && latest?.created_at) {
+        const elapsedMs = now.getTime() - new Date(latest.created_at).getTime();
+        reuploadCooldownRemainingMs = Math.max(0, gradeVerificationConfig.reuploadCooldownMs - elapsedMs);
+        canReuploadTranscript = reuploadCooldownRemainingMs === 0;
+        reuploadAvailableAt =
+          reuploadCooldownRemainingMs > 0 ? new Date(now.getTime() + reuploadCooldownRemainingMs).toISOString() : null;
+      }
+    }
+
     let openAdminReview: {
       id: string;
       status: string;
@@ -115,6 +139,15 @@ export async function GET() {
           uploadsToday: uploadsTodayCount || 0,
           remainingUploadsToday: Math.max(0, gradeVerificationConfig.maxUploadsPerDay - (uploadsTodayCount || 0)),
           maxUploadsPerDay: gradeVerificationConfig.maxUploadsPerDay,
+          isVerifiedSeller,
+          canReuploadTranscript,
+          reuploadCooldownHours: gradeVerificationConfig.reuploadCooldownHours,
+          reuploadCooldownRemainingMs,
+          reuploadAvailableAt,
+          reuploadCooldownLabel:
+            reuploadCooldownRemainingMs > 0
+              ? formatReuploadCooldownRemaining(reuploadCooldownRemainingMs)
+              : null,
         },
       },
       { status: 200 }

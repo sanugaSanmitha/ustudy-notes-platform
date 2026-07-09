@@ -302,66 +302,97 @@ export default function AdminGradeReviewsPage() {
       )}
 
       <Card className="sticky top-16 z-30 mb-4 bg-white p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
           <div className="relative min-w-[240px] flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <label htmlFor="queue-search" className="mb-1 block text-xs font-medium text-slate-600">
+              Search
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                id="queue-search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search student name or email…"
+                className="pl-9"
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="status-filter" className="mb-1 block text-xs font-medium text-slate-600">
+              Status
+            </label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => updateParams({ status: e.target.value, page: '1' })}
+              className="h-9 min-w-[11rem] rounded-md border border-slate-300 bg-white px-3 text-sm"
+            >
+              {STATUS_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="risk-filter" className="mb-1 block text-xs font-medium text-slate-600">
+              Risk
+            </label>
+            <select
+              id="risk-filter"
+              value={riskFilter}
+              onChange={(e) => updateParams({ risk: e.target.value === 'all' ? null : e.target.value, page: '1' })}
+              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            >
+              {RISK_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="priority-filter" className="mb-1 block text-xs font-medium text-slate-600">
+              Priority
+            </label>
+            <select
+              id="priority-filter"
+              value={priorityFilter}
+              onChange={(e) => updateParams({ priority: e.target.value === 'all' ? null : e.target.value, page: '1' })}
+              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            >
+              {PRIORITY_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="date-from" className="mb-1 block text-xs font-medium text-slate-600">
+              From
+            </label>
             <Input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search student name or email…"
-              className="pl-9"
+              id="date-from"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => updateParams({ dateFrom: e.target.value || null, page: '1' })}
+              className="h-9 w-36"
             />
           </div>
-          <div className="flex flex-wrap gap-2">
-            {STATUS_FILTERS.map((filter) => (
-              <Button
-                key={filter.value}
-                type="button"
-                size="sm"
-                variant={statusFilter === filter.value ? 'default' : 'outline'}
-                className={statusFilter === filter.value ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
-                onClick={() => updateParams({ status: filter.value, page: '1' })}
-              >
-                {filter.label}
-              </Button>
-            ))}
+          <div>
+            <label htmlFor="date-to" className="mb-1 block text-xs font-medium text-slate-600">
+              To
+            </label>
+            <Input
+              id="date-to"
+              type="date"
+              value={dateTo}
+              onChange={(e) => updateParams({ dateTo: e.target.value || null, page: '1' })}
+              className="h-9 w-36"
+            />
           </div>
-          <select
-            value={riskFilter}
-            onChange={(e) => updateParams({ risk: e.target.value === 'all' ? null : e.target.value, page: '1' })}
-            className="h-9 rounded-md border border-slate-200 px-3 text-sm"
-          >
-            {RISK_FILTERS.map((filter) => (
-              <option key={filter.value} value={filter.value}>
-                {filter.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={priorityFilter}
-            onChange={(e) => updateParams({ priority: e.target.value === 'all' ? null : e.target.value, page: '1' })}
-            className="h-9 rounded-md border border-slate-200 px-3 text-sm"
-          >
-            {PRIORITY_FILTERS.map((filter) => (
-              <option key={filter.value} value={filter.value}>
-                {filter.label}
-              </option>
-            ))}
-          </select>
-          <Input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => updateParams({ dateFrom: e.target.value || null, page: '1' })}
-            className="h-9 w-36"
-            aria-label="From date"
-          />
-          <Input
-            type="date"
-            value={dateTo}
-            onChange={(e) => updateParams({ dateTo: e.target.value || null, page: '1' })}
-            className="h-9 w-36"
-            aria-label="To date"
-          />
         </div>
       </Card>
 

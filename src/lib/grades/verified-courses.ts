@@ -91,6 +91,26 @@ function extractCoursesFromVerification(record: {
   });
 }
 
+export async function fetchVerifiedCourseCodeSet(userId: string) {
+  const { data, error } = await adminClient.from('verified_courses').select('course_code').eq('user_id', userId);
+
+  if (error) {
+    throw error;
+  }
+
+  return new Set((data || []).map((row) => normalizeCourseCode(String(row.course_code || ''))).filter(Boolean));
+}
+
+export function filterCoursesNotAlreadyVerified<T extends { courseCode?: string }>(
+  courses: T[],
+  existingCodes: Set<string>
+) {
+  return courses.filter((course) => {
+    const code = normalizeCourseCode(String(course.courseCode || ''));
+    return Boolean(code) && !existingCodes.has(code);
+  });
+}
+
 export async function syncVerifiedCoursesForApproval(verificationId: string, userId: string) {
   const { data: verification, error } = await adminClient
     .from('grade_verifications')
@@ -103,9 +123,11 @@ export async function syncVerifiedCoursesForApproval(verificationId: string, use
   }
 
   if (!verification || verification.user_id !== userId || verification.status !== 'approved') {
-    return { synced: 0 };
+    return { synced: 0, skipped: 0 };
   }
 
+  const existingCodes = await fetchVerifiedCourseCodeSet(userId);
+  let skippedDuringSync = 0;
   const courses = [];
   for (const course of extractCoursesFromVerification(verification)) {
     const normalized = {
@@ -116,8 +138,13 @@ export async function syncVerifiedCoursesForApproval(verificationId: string, use
       semester: course.semester || null,
     };
     if (!normalized.courseCode || !normalized.grade) continue;
+    if (existingCodes.has(normalized.courseCode)) {
+      skippedDuringSync += 1;
+      continue;
+    }
     const enriched = await enrichCourseRow(normalized);
     courses.push(enriched);
+    existingCodes.add(normalized.courseCode);
   }
 
   const uniqueCourses = new Map<string, (typeof courses)[number]>();
@@ -127,11 +154,6 @@ export async function syncVerifiedCoursesForApproval(verificationId: string, use
 
   const verifiedAt = verification.reviewed_at || new Date().toISOString();
   const now = new Date().toISOString();
-
-  const { error: deleteError } = await adminClient.from('verified_courses').delete().eq('user_id', userId);
-  if (deleteError) {
-    throw deleteError;
-  }
 
   const rows = Array.from(uniqueCourses.values()).map((course) => ({
     user_id: userId,
@@ -146,7 +168,7 @@ export async function syncVerifiedCoursesForApproval(verificationId: string, use
   }));
 
   if (rows.length === 0) {
-    return { synced: 0 };
+    return { synced: 0, skipped: skippedDuringSync };
   }
 
   const { error: insertError } = await adminClient.from('verified_courses').insert(rows);
@@ -154,5 +176,5 @@ export async function syncVerifiedCoursesForApproval(verificationId: string, use
     throw insertError;
   }
 
-  return { synced: rows.length };
+  return { synced: rows.length, skipped: skippedDuringSync };
 }

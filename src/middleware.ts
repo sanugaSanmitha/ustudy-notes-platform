@@ -25,6 +25,10 @@ const PROTECTED_PATHS = [
 
 const AUTH_PATHS = ['/register', '/login', '/verify-email'];
 
+function hasSupabaseSessionCookie(request: NextRequest) {
+  return request.cookies.getAll().some((cookie) => cookie.name.includes('-auth-token'));
+}
+
 function isAdminUser(email: string | null | undefined, roles: AppRole[]) {
   return isAuthorizedAdmin(email, roles);
 }
@@ -69,6 +73,11 @@ export async function middleware(request: NextRequest) {
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
   const isHomePath = pathname === '/';
+
+  // Public homepage for guests — skip auth round-trip entirely.
+  if (isHomePath && !hasSupabaseSessionCookie(request)) {
+    return NextResponse.next();
+  }
 
   // Skip Supabase/session work for routes that do not need auth enforcement.
   if (!isProtectedPath && !isAuthPath && !isCompleteProfilePath && !isHomePath) {
@@ -131,6 +140,10 @@ export async function middleware(request: NextRequest) {
   }
 
   const isNotesUploadPath = pathname === '/notes/upload' || pathname.startsWith('/notes/upload/');
+  const isMaterialsPath = pathname === '/materials' || pathname.startsWith('/materials/');
+  if (isMaterialsPath) {
+    return NextResponse.redirect(new URL('/notes/upload', request.url));
+  }
   if (isNotesUploadPath && user && !isSeller) {
     const verifyUrl = new URL('/grades/upload', request.url);
     verifyUrl.searchParams.set('reason', 'seller_required');
@@ -220,6 +233,8 @@ export const config = {
     '/wallet/:path*',
     '/grades/:path*',
     '/notes/upload/:path*',
+    '/materials',
+    '/materials/:path*',
     '/admin',
     '/admin/:path*',
     '/support/:path*',

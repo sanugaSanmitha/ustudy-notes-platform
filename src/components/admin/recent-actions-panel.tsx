@@ -16,17 +16,25 @@ type RecentActionsPanelProps = {
   actions: AuditAction[];
 };
 
-function relativeTime(iso: string) {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+function formatAction(type: string) {
+  const labels: Record<string, string> = {
+    admin_approved: 'approved transcript',
+    admin_rejected: 'rejected transcript',
+    review_assigned: 'assigned verification',
+    review_reassigned: 'reassigned verification',
+    review_claimed: 'claimed review',
+    review_escalated: 'escalated request',
+    request_more_info: 'requested more information',
+    student_replied: 'received student response',
+    review_takeover: 'took over review',
+    priority_changed: 'changed priority',
+    reassignment_requested: 'requested reassignment',
+  };
+  return labels[type] || type.replace(/_/g, ' ');
 }
 
-function formatAction(type: string) {
-  return type.replace(/_/g, ' ');
+function formatClockTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 export function RecentActionsPanel({ actions }: RecentActionsPanelProps) {
@@ -36,24 +44,21 @@ export function RecentActionsPanel({ actions }: RecentActionsPanelProps) {
       {actions.length === 0 ? (
         <p className="mt-3 text-sm text-slate-600">No recent activity.</p>
       ) : (
-        <ul className="mt-3 space-y-3" aria-live="polite">
+        <ul className="mt-3 divide-y divide-slate-100" aria-live="polite">
           {actions.map((action) => (
-            <li key={action.id} className="text-sm">
-              <p className="text-slate-800">
-                <span className="font-medium">{action.actor?.full_name || action.actor?.email || 'System'}</span>{' '}
-                <span className="text-slate-600">{formatAction(action.action_type)}</span>
-              </p>
-              <p className="text-xs text-slate-500">
-                {relativeTime(action.created_at)}
+            <li key={action.id} className="flex gap-3 py-3 text-sm first:pt-0">
+              <span className="w-12 shrink-0 font-mono text-xs text-slate-500">{formatClockTime(action.created_at)}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-slate-800">
+                  <span className="font-medium">{action.actor?.full_name || action.actor?.email || 'System'}</span>{' '}
+                  <span className="text-slate-600">{formatAction(action.action_type)}</span>
+                </p>
                 {action.review_request_id && (
-                  <>
-                    {' · '}
-                    <Link href={`/admin/grades/${action.review_request_id}`} className="text-blue-600 hover:underline">
-                      View request
-                    </Link>
-                  </>
+                  <Link href={`/admin/grades/${action.review_request_id}`} className="text-xs text-blue-600 hover:underline">
+                    View request
+                  </Link>
                 )}
-              </p>
+              </div>
             </li>
           ))}
         </ul>

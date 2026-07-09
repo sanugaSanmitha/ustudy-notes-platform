@@ -10,18 +10,15 @@ import { GradeTableEditor, type EditableCourseRow } from '@/components/admin/gra
 import { PdfViewer } from '@/components/admin/pdf-viewer';
 import { ConfidenceSummaryBar } from '@/components/admin/confidence-summary-bar';
 import { RiskIndicatorsPanel } from '@/components/admin/risk-indicators-panel';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { REJECT_REASON_OPTIONS } from '@/lib/grades/reject-reasons';
 import { adminFetch } from '@/lib/api/admin-client';
 import { hasHighSeverityRisk } from '@/lib/grades/course-validation';
 import { resolveVerificationReviewRows } from '@/lib/grades/review-model';
+import { cn } from '@/lib/utils';
 import { VerificationStatusSummaryBar } from '@/components/admin/verification-status-summary-bar';
-import {
-  VerificationAnalyticsCharts,
-  type VerificationAnalyticsData,
-} from '@/components/admin/verification-analytics-charts';
 import { ArrowLeft, Lock } from 'lucide-react';
 
 type ReviewPayload = {
@@ -105,7 +102,6 @@ export default function AdminGradeReviewDetailPage() {
   const [studentReplies, setStudentReplies] = useState<
     Array<{ id: string; message: string; files?: Array<{ name?: string }> | null; created_at: string }>
   >([]);
-  const [analytics, setAnalytics] = useState<VerificationAnalyticsData | null>(null);
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
@@ -147,14 +143,6 @@ export default function AdminGradeReviewDetailPage() {
     fetch('/api/admin/staff/assistants', { cache: 'no-store', credentials: 'same-origin' })
       .then((response) => response.json())
       .then((result) => setStaff(result?.data?.staff || result?.data?.assistants || []))
-      .catch(() => null);
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    fetch('/api/admin/dashboard', { cache: 'no-store', credentials: 'same-origin' })
-      .then((response) => response.json())
-      .then((result) => setAnalytics(result?.data?.analytics || null))
       .catch(() => null);
   }, [isAdmin]);
 
@@ -539,10 +527,6 @@ export default function AdminGradeReviewDetailPage() {
             />
           </Card>
         )}
-
-        {isAdmin && analytics && (
-          <VerificationAnalyticsCharts data={analytics} title="Queue Analytics" compact />
-        )}
       </div>
     );
 
@@ -576,12 +560,13 @@ export default function AdminGradeReviewDetailPage() {
       description={`Transcript review · ${request.status.replace(/_/g, ' ')}`}
       actions={
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/admin/grades">
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Back to queue
-            </Link>
-          </Button>
+          <Link
+            href="/admin/grades"
+            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'inline-flex items-center')}
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            Back to queue
+          </Link>
           {!readOnly && !isFinalized && (
             <>
               <Button

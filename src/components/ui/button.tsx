@@ -41,26 +41,46 @@ const buttonVariants = cva(
   }
 )
 
+function getSlotChild(children: React.ReactNode): React.ReactElement | null {
+  const meaningful = React.Children.toArray(children).filter(
+    (child) => !(typeof child === "string" && child.trim() === "")
+  )
+
+  if (meaningful.length === 1 && React.isValidElement(meaningful[0])) {
+    return meaningful[0]
+  }
+
+  return null
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
   asChild = false,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
   }) {
-  const Comp = asChild ? Slot.Root : "button"
+  const slotChild = asChild ? getSlotChild(children) : null
+  const sharedProps = {
+    "data-slot": "button",
+    "data-variant": variant,
+    "data-size": size,
+    className: cn(buttonVariants({ variant, size, className })),
+    ...props,
+  }
+
+  if (asChild && slotChild) {
+    return <Slot.Root {...sharedProps}>{slotChild}</Slot.Root>
+  }
 
   return (
-    <Comp
-      data-slot="button"
-      data-variant={variant}
-      data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
+    <button type="button" {...sharedProps}>
+      {children}
+    </button>
   )
 }
 

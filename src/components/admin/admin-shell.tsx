@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, FileText, LayoutDashboard, LogOut, ScrollText, Users } from 'lucide-react';
+import { ClipboardList, FileArchive, FileText, LayoutDashboard, LogOut, NotebookPen, ScrollText, Users, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
@@ -12,7 +12,10 @@ type PortalRole = 'admin' | 'assistant' | 'support';
 
 const ALL_NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, roles: ['admin'] as PortalRole[] },
+  { href: '/admin/summary', label: 'Summary', icon: BarChart3, roles: ['admin'] as PortalRole[] },
   { href: '/admin/users', label: 'Users', icon: Users, roles: ['admin'] as PortalRole[] },
+  { href: '/admin/materials', label: 'Materials', icon: FileArchive, roles: ['admin'] as PortalRole[] },
+  { href: '/admin/notes', label: 'Note Listings', icon: NotebookPen, roles: ['admin'] as PortalRole[] },
   { href: '/admin/grades', label: 'Verification Queue', icon: FileText, roles: ['admin', 'assistant', 'support'] as PortalRole[] },
   { href: '/admin/audit', label: 'Audit Log', icon: ScrollText, roles: ['admin'] as PortalRole[] },
   { href: '/admin/support', label: 'Support Queue', icon: ClipboardList, roles: ['admin', 'support'] as PortalRole[] },

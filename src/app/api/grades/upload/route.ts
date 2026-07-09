@@ -5,9 +5,13 @@ import { adminClient } from '@/lib/supabase/admin';
 import { extractAndValidateTranscriptBuffer } from '@/lib/grades/parser';
 import { deleteTranscriptFile, uploadTranscriptFile } from '@/lib/grades/transcript-storage';
 import { createReviewAction, upsertParseQueue } from '@/lib/grades/review-pipeline';
-import { gradeVerificationConfig } from '@/lib/grades/config';
+import { gradeVerificationConfig, formatReuploadCooldownRemaining } from '@/lib/grades/config';
 import { buildInitialReviewRows } from '@/lib/grades/review-model';
 import { enrichCourseRows, findUnknownCourseCodes } from '@/lib/courses/catalog';
+import {
+  fetchVerifiedCourseCodeSet,
+  filterCoursesNotAlreadyVerified,
+} from '@/lib/grades/verified-courses';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,19 +178,80 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (userProfile.is_seller) {
+    const now = new Date();
+
+    const { data: existingApproved, error: approvedCheckError } = await adminClient
+      .from('grade_verifications')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'approved')
+      .order('reviewed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (approvedCheckError) {
+      console.error('Grade upload approved-check error:', approvedCheckError);
+    }
+
+    const isGradeUpdate = Boolean(userProfile.is_seller || existingApproved);
+
+    const { data: activeVerification, error: activeVerificationError } = await adminClient
+      .from('grade_verifications')
+      .select('id, status')
+      .eq('user_id', user.id)
+      .in('status', ['pending_review', 'manual_required'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (activeVerificationError) {
+      console.error('Grade upload active-verification error:', activeVerificationError);
+    }
+
+    if (activeVerification) {
       return NextResponse.json(
         {
           error: {
-            code: 'ALREADY_VERIFIED',
-            message: 'Your account is already verified as a seller.',
+            code: 'PENDING_VERIFICATION',
+            message:
+              'You already have a transcript submission in progress. Finish or cancel it before uploading another transcript.',
           },
         },
         { status: 409 }
       );
     }
 
-    const now = new Date();
+    if (isGradeUpdate) {
+      const { data: latestUpload, error: latestUploadError } = await adminClient
+        .from('grade_verifications')
+        .select('created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestUploadError) {
+        console.error('Grade upload latest-upload error:', latestUploadError);
+      }
+
+      if (latestUpload?.created_at) {
+        const elapsedMs = now.getTime() - new Date(latestUpload.created_at).getTime();
+        const remainingMs = gradeVerificationConfig.reuploadCooldownMs - elapsedMs;
+        if (remainingMs > 0) {
+          return NextResponse.json(
+            {
+              error: {
+                code: 'REUPLOAD_COOLDOWN',
+                message: `Please wait ${formatReuploadCooldownRemaining(remainingMs)} before submitting another transcript.`,
+                reuploadAvailableAt: new Date(now.getTime() + remainingMs).toISOString(),
+                reuploadCooldownRemainingMs: remainingMs,
+              },
+            },
+            { status: 429 }
+          );
+        }
+      }
+    }
     const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
 
     const { count: uploadsTodayCount, error: countError } = await adminClient
@@ -212,31 +277,6 @@ export async function POST(request: NextRequest) {
           },
         },
         { status: 429 }
-      );
-    }
-
-    const { data: existingApproved, error: approvedCheckError } = await adminClient
-      .from('grade_verifications')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('status', 'approved')
-      .order('reviewed_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (approvedCheckError) {
-      console.error('Grade upload approved-check error:', approvedCheckError);
-    }
-
-    if (existingApproved) {
-      return NextResponse.json(
-        {
-          error: {
-            code: 'ALREADY_VERIFIED',
-            message: 'Your account is already grade-verified. You do not need to upload another transcript.',
-          },
-        },
-        { status: 409 }
       );
     }
 
@@ -309,8 +349,47 @@ export async function POST(request: NextRequest) {
       emailConfirmed: Boolean((user as { email_confirmed_at?: string | null }).email_confirmed_at),
       fullName: userProfile?.full_name || null,
     });
-    const parsedCourses = await enrichCourseRows(pipelineResult.parse.courses);
-    const parseFailed = parsedCourses.length === 0;
+    const rawParsedCourseCount = pipelineResult.parse.courses.length;
+    let existingVerifiedCourseCodes = new Set<string>();
+    if (isGradeUpdate) {
+      existingVerifiedCourseCodes = await fetchVerifiedCourseCodeSet(user.id);
+    }
+
+    const enrichedParsedCourses = await enrichCourseRows(pipelineResult.parse.courses);
+    let parsedCourses = enrichedParsedCourses;
+    let skippedDuplicateCount = 0;
+
+    if (isGradeUpdate && parsedCourses.length > 0) {
+      parsedCourses = filterCoursesNotAlreadyVerified(parsedCourses, existingVerifiedCourseCodes);
+      skippedDuplicateCount = enrichedParsedCourses.length - parsedCourses.length;
+    }
+
+    const parseFailed = rawParsedCourseCount === 0;
+    const noNewGradesFound = !parseFailed && parsedCourses.length === 0;
+
+    if (noNewGradesFound) {
+      try {
+        await deleteTranscriptFile(transcriptStorageBucket, transcriptStoragePath);
+      } catch (storageDeleteError) {
+        console.error('Transcript storage delete error:', storageDeleteError);
+      }
+
+      return NextResponse.json(
+        {
+          data: {
+            mode: 'no_new_grades',
+            message:
+              skippedDuplicateCount > 0
+                ? `All ${skippedDuplicateCount} course(s) on this transcript are already verified. No new grades were added.`
+                : 'No new grades were found on this transcript.',
+            skippedDuplicateCount,
+            isGradeUpdate,
+          },
+        },
+        { status: 200 }
+      );
+    }
+
     const requiresManualInput = parseFailed;
     const unknownCatalogCodes = parseFailed
       ? []
@@ -491,8 +570,13 @@ export async function POST(request: NextRequest) {
           decision: inserted.verification_decision,
           message: retryLimitReached
             ? 'Transcript parsed, but automatic approval is disabled after retry limit. Please request admin review.'
-            : 'Transcript parsed successfully. Please review courses and confirm before final approval.',
+            : isGradeUpdate
+              ? `Found ${parsedCourses.length} new course(s) to add. Existing verified grades were not changed.${skippedDuplicateCount > 0 ? ` ${skippedDuplicateCount} duplicate course(s) were ignored.` : ''} Please review and confirm.`
+              : 'Transcript parsed successfully. Please review courses and confirm before final approval.',
           remainingUploadsToday: gradeVerificationConfig.maxUploadsPerDay - ((uploadsTodayCount || 0) + 1),
+          isGradeUpdate,
+          skippedDuplicateCount,
+          newCourseCount: parsedCourses.length,
         },
       },
       { status: 200 }

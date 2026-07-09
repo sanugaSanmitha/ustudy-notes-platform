@@ -163,16 +163,31 @@ export async function POST(request: NextRequest) {
       !verification.transcript_storage_bucket ||
       !verification.transcript_storage_path
     ) {
-      if (!canRequestFromManualSubmission) {
+      const hasExternalLink = Boolean(externalTranscriptUrl?.trim());
+      if (!hasExternalLink && !canRequestFromManualSubmission) {
         return NextResponse.json(
           {
             error: {
               code: 'TRANSCRIPT_NOT_AVAILABLE',
               message:
-                'Transcript file is no longer available for manual review. Please upload your transcript again and then request review.',
+                'Upload a transcript PDF or provide an external transcript link before requesting review.',
             },
           },
           { status: 409 }
+        );
+      }
+    }
+
+    if (canRequestFromManualRequired) {
+      if (!effectiveCourseRows || effectiveCourseRows.length === 0) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'COURSES_REQUIRED',
+              message: 'Add at least one course with a valid grade before requesting review.',
+            },
+          },
+          { status: 400 }
         );
       }
     }
@@ -256,7 +271,7 @@ export async function POST(request: NextRequest) {
           manual_courses: toNormalizedCourses(effectiveCourseRows),
           review_rows: effectiveCourseRows,
           confirmation_required: false,
-          ...(canRequestFromPendingConfirmation ? { submission_type: 'pdf_manual' } : {}),
+          submission_type: canRequestFromManualRequired || canRequestFromManualSubmission ? 'manual' : 'pdf_manual',
           updated_at: new Date().toISOString(),
         })
         .eq('id', verificationId);

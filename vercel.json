@@ -1,0 +1,5 @@
+{
+  "env": {
+    "MATERIAL_REUPLOAD_WINDOW_HOURS": "64"
+  }
+}

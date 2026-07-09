@@ -218,3 +218,80 @@ export async function sendGradeVerificationRejectedEmail(payload: VerificationOu
     return { success: false, error };
   }
 }
+
+type NoteListingOutcomeEmailPayload = {
+  sellerEmail: string;
+  sellerName: string;
+  listingTitle: string;
+  courseCode: string;
+  adminNotes?: string | null;
+  rejectReasonLabel?: string | null;
+  rejectComment?: string | null;
+};
+
+export async function sendNoteListingApprovedEmail(payload: NoteListingOutcomeEmailPayload) {
+  try {
+    const { error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: payload.sellerEmail,
+      subject: `Your note listing is now live — ${payload.courseCode}`,
+      html: `
+        <h2>Note Listing Approved</h2>
+        <p>Hi ${payload.sellerName || 'Seller'},</p>
+        <p>Your note listing <strong>${payload.listingTitle}</strong> for ${payload.courseCode} has been approved and is now published on UStudy.</p>
+        ${
+          payload.adminNotes
+            ? `<p><strong>Reviewer notes:</strong> ${payload.adminNotes}</p>`
+            : ''
+        }
+        <p>Buyers can now discover and purchase your notes.</p>
+      `,
+    });
+
+    if (error) {
+      console.error('Note listing approved email error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Note listing approved email error:', error);
+    return { success: false, error };
+  }
+}
+
+export async function sendNoteListingRejectedEmail(payload: NoteListingOutcomeEmailPayload) {
+  try {
+    const { error } = await resend.emails.send({
+      from: EMAIL_FROM,
+      to: payload.sellerEmail,
+      subject: `Note listing update — ${payload.courseCode}`,
+      html: `
+        <h2>Note Listing Not Approved</h2>
+        <p>Hi ${payload.sellerName || 'Seller'},</p>
+        <p>We could not approve your note listing <strong>${payload.listingTitle}</strong> for ${payload.courseCode}.</p>
+        ${
+          payload.rejectReasonLabel
+            ? `<p><strong>Reason:</strong> ${payload.rejectReasonLabel}</p>`
+            : ''
+        }
+        ${
+          payload.rejectComment
+            ? `<p><strong>Reviewer comment:</strong> ${payload.rejectComment}</p>`
+            : ''
+        }
+        <p>You can revise your materials and submit a new listing from the Notes Upload page.</p>
+      `,
+    });
+
+    if (error) {
+      console.error('Note listing rejected email error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Note listing rejected email error:', error);
+    return { success: false, error };
+  }
+}

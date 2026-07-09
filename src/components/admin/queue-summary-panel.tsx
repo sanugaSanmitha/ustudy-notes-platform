@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 type QueueSummaryItem = {
   id: string;
@@ -58,9 +59,12 @@ export function QueueSummaryPanel({ items, slaHours = 48 }: QueueSummaryPanelPro
           })}
         </ul>
       )}
-      <Button asChild variant="link" className="mt-3 h-auto p-0 text-sm">
-        <Link href="/admin/grades">View full queue →</Link>
-      </Button>
+      <Link
+        href="/admin/grades"
+        className={cn(buttonVariants({ variant: 'link', size: 'sm' }), 'mt-3 h-auto p-0 text-sm')}
+      >
+        View full queue →
+      </Link>
     </Card>
   );
 }

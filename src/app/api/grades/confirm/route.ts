@@ -119,6 +119,13 @@ export async function POST(request: NextRequest) {
     const normalizedCourses = toNormalizedCourses(rows);
     const now = new Date().toISOString();
 
+    const { data: userProfileBefore } = await adminClient
+      .from('users')
+      .select('is_seller')
+      .eq('id', user.id)
+      .maybeSingle();
+    const wasAlreadyVerified = Boolean(userProfileBefore?.is_seller);
+
     const { error: verificationUpdateError } = await adminClient
       .from('grade_verifications')
       .update({
@@ -153,8 +160,9 @@ export async function POST(request: NextRequest) {
       console.error('Grade confirm seller update error:', sellerUpdateError);
     }
 
+    let syncResult = { synced: 0, skipped: 0 };
     try {
-      await syncVerifiedCoursesForApproval(verificationId, user.id);
+      syncResult = await syncVerifiedCoursesForApproval(verificationId, user.id);
     } catch (syncError) {
       console.error('Verified courses sync error:', syncError);
     }
@@ -218,12 +226,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const successMessage = wasAlreadyVerified
+      ? syncResult.synced > 0
+        ? `${syncResult.synced} new course(s) added to your verified record. Existing grades were not changed.`
+        : 'Transcript processed. All courses were already verified — no new grades were added.'
+      : 'Transcript verified successfully. Seller access has been enabled.';
+
     return NextResponse.json(
       {
         data: {
           verificationId,
           status: 'approved',
-          message: 'Transcript verified successfully. Seller access has been enabled.',
+          message: successMessage,
+          newCoursesAdded: syncResult.synced,
         },
       },
       { status: 200 }

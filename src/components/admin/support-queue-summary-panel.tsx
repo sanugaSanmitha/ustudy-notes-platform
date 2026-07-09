@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
@@ -48,9 +49,12 @@ export function SupportQueueSummaryPanel({ items }: SupportQueueSummaryPanelProp
           ))}
         </ul>
       )}
-      <Button asChild variant="link" className="mt-3 h-auto p-0 text-sm">
-        <Link href="/admin/support">View full queue →</Link>
-      </Button>
+      <Link
+        href="/admin/support"
+        className={cn(buttonVariants({ variant: 'link', size: 'sm' }), 'mt-3 h-auto p-0 text-sm')}
+      >
+        View full queue →
+      </Link>
     </Card>
   );
 }

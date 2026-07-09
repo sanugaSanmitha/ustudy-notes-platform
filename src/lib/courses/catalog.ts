@@ -168,26 +168,7 @@ export async function findUnknownCourseCodes(courseCodes: string[]) {
   return unknown;
 }
 
-export async function getPublishedListingsForCourse(courseCode: string) {
-  const code = normalizeCourseCode(courseCode);
-  if (!code) return [];
-
-  const { data, error } = await adminClient
-    .from('note_listings')
-    .select('id, title, description, professor, academic_year, semester, language, price_hkd, created_at')
-    .eq('course_code', code)
-    .eq('status', 'published')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    if (error.message.includes('relation "public.note_listings" does not exist')) {
-      return [];
-    }
-    throw error;
-  }
-
-  return data || [];
-}
+export { getPublishedListingsForCourse } from '@/lib/notes/marketplace';
 
 export async function countPublishedNotes() {
   const { count, error } = await adminClient

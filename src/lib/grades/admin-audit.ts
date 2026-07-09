@@ -1,4 +1,5 @@
 import { adminClient } from '@/lib/supabase/admin';
+import type { SummaryDateRange } from '@/lib/grades/summary-date-range';
 
 export async function fetchRecentReviewActions(limit = 20) {
   const { data, error } = await adminClient
@@ -67,7 +68,7 @@ const STATUS_CHART_LABELS: Record<string, string> = {
   approved: 'Approved',
   rejected: 'Rejected',
   reviewing: 'In Review',
-  pending: 'Waiting',
+  pending: 'Pending',
   waiting_student: 'Waiting Student',
   pending_reassignment: 'Pending Reassignment',
   escalated: 'Escalated',
@@ -82,26 +83,43 @@ function monthLabel(key: string) {
   return new Date(Number(year), Number(month) - 1, 1).toLocaleString('en-US', { month: 'short' });
 }
 
-export async function fetchVerificationAnalytics() {
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+export async function fetchVerificationAnalytics(range?: SummaryDateRange) {
+  const now = new Date();
+  const rangeEnd = range?.to ? new Date(range.to) : now;
+  const rangeStart = range?.from
+    ? new Date(range.from)
+    : (() => {
+        const sixMonthsAgo = new Date(rangeEnd);
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+        sixMonthsAgo.setDate(1);
+        sixMonthsAgo.setHours(0, 0, 0, 0);
+        return sixMonthsAgo;
+      })();
+
+  const sixMonthsAgo = new Date(rangeStart);
   sixMonthsAgo.setDate(1);
   sixMonthsAgo.setHours(0, 0, 0, 0);
 
-  const sevenDaysAgo = new Date();
+  const sevenDaysAgo = new Date(rangeEnd);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
+  let statusQuery = adminClient.from('admin_review_requests').select('status, created_at, resolved_at');
+  if (range?.from) statusQuery = statusQuery.gte('created_at', range.from);
+  statusQuery = statusQuery.lte('created_at', range?.to || now.toISOString());
+
   const [statusResult, trendResult, weeklyResult] = await Promise.all([
-    adminClient.from('admin_review_requests').select('status'),
+    statusQuery,
     adminClient
       .from('admin_review_requests')
       .select('status, created_at, resolved_at')
-      .gte('created_at', sixMonthsAgo.toISOString()),
+      .gte('created_at', sixMonthsAgo.toISOString())
+      .lte('created_at', (range?.to || now.toISOString())),
     adminClient
       .from('admin_review_requests')
       .select('status, created_at, resolved_at')
-      .gte('created_at', sevenDaysAgo.toISOString()),
+      .gte('created_at', sevenDaysAgo.toISOString())
+      .lte('created_at', (range?.to || now.toISOString())),
   ]);
 
   if (statusResult.error) {
@@ -122,12 +140,29 @@ export async function fetchVerificationAnalytics() {
     }))
     .sort((a, b) => b.value - a.value);
 
-  const monthBuckets = new Map<string, { month: string; approved: number; rejected: number; pending: number }>();
+  const monthBuckets = new Map<
+    string,
+    {
+      month: string;
+      approved: number;
+      rejected: number;
+      pending: number;
+      reviewing: number;
+      escalated: number;
+    }
+  >();
   for (let i = 0; i < 6; i += 1) {
     const date = new Date(sixMonthsAgo);
     date.setMonth(sixMonthsAgo.getMonth() + i);
     const key = monthKey(date);
-    monthBuckets.set(key, { month: monthLabel(key), approved: 0, rejected: 0, pending: 0 });
+    monthBuckets.set(key, {
+      month: monthLabel(key),
+      approved: 0,
+      rejected: 0,
+      pending: 0,
+      reviewing: 0,
+      escalated: 0,
+    });
   }
 
   for (const row of trendResult.data || []) {
@@ -146,7 +181,28 @@ export async function fetchVerificationAnalytics() {
     }
   }
 
-  const weeklyBuckets = new Map<string, { day: string; submissions: number; resolved: number }>();
+  const { data: activityRows } = await adminClient
+    .from('admin_review_requests')
+    .select('review_started_at, escalated_at, resolved_at, status')
+    .gte('created_at', sixMonthsAgo.toISOString());
+
+  for (const row of activityRows || []) {
+    if (row.review_started_at) {
+      const key = monthKey(new Date(row.review_started_at));
+      const bucket = monthBuckets.get(key);
+      if (bucket) bucket.reviewing += 1;
+    }
+    if (row.escalated_at) {
+      const key = monthKey(new Date(row.escalated_at));
+      const bucket = monthBuckets.get(key);
+      if (bucket) bucket.escalated += 1;
+    }
+  }
+
+  const weeklyBuckets = new Map<
+    string,
+    { day: string; submissions: number; resolved: number; approved: number; rejected: number }
+  >();
   for (let i = 0; i < 7; i += 1) {
     const date = new Date(sevenDaysAgo);
     date.setDate(sevenDaysAgo.getDate() + i);
@@ -155,6 +211,8 @@ export async function fetchVerificationAnalytics() {
       day: date.toLocaleString('en-US', { weekday: 'short' }),
       submissions: 0,
       resolved: 0,
+      approved: 0,
+      rejected: 0,
     });
   }
 
@@ -166,7 +224,11 @@ export async function fetchVerificationAnalytics() {
     if (row.resolved_at) {
       const resolvedKey = new Date(row.resolved_at).toISOString().slice(0, 10);
       const resolvedBucket = weeklyBuckets.get(resolvedKey);
-      if (resolvedBucket) resolvedBucket.resolved += 1;
+      if (resolvedBucket) {
+        resolvedBucket.resolved += 1;
+        if (row.status === 'approved') resolvedBucket.approved += 1;
+        if (row.status === 'rejected') resolvedBucket.rejected += 1;
+      }
     }
   }
 

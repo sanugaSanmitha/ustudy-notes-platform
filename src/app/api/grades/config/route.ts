@@ -13,6 +13,7 @@ export async function GET() {
         maxParseRetries: gradeVerificationConfig.maxParseRetries,
         signedUrlExpiresSeconds: gradeVerificationConfig.signedUrlExpiresSeconds,
         rejectedRetentionDays: gradeVerificationConfig.rejectedRetentionDays,
+        reuploadCooldownHours: gradeVerificationConfig.reuploadCooldownHours,
       },
     },
     { status: 200 }
