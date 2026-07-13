@@ -1,4 +1,4 @@
--- HKUST Notes Platform — Auth tables (Phase 1)
+-- UStudy Notes Platform — Auth tables (Phase 1)
 -- Run in Supabase Dashboard → SQL Editor
 
 create table if not exists public.users (

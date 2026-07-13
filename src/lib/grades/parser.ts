@@ -48,7 +48,7 @@ type GeminiObservation = {
 type GeminiTranscriptJson = {
   document?: {
     type?: unknown;
-    isLikelyHKUSTTranscript?: unknown;
+    isLikelyTranscript?: unknown;
     pages?: unknown;
   };
   student?: {
@@ -453,8 +453,8 @@ function buildRegexFallback(transcriptText: string): TranscriptParseResult {
     },
     extractedTranscript: {
       document: {
-        type: 'HKUST_UNOFFICIAL_TRANSCRIPT',
-        isLikelyHKUSTTranscript: /Unofficial Transcript of Academic Record/i.test(transcriptText),
+        type: 'UNOFFICIAL_TRANSCRIPT',
+        isLikelyTranscript: /Unofficial Transcript of Academic Record/i.test(transcriptText),
         pages: null,
       },
       student: {
@@ -530,7 +530,7 @@ OUTPUT JSON
 {
   "document": {
     "type": "HKUST_UNOFFICIAL_TRANSCRIPT",
-    "isLikelyHKUSTTranscript": true,
+    "isLikelyTranscript": true,
     "pages": null
   },
   "student": {
@@ -684,7 +684,7 @@ function mapGeminiPayloadToParseResult(payload: Record<string, unknown>, transcr
     extractedTranscript: {
       document: {
         type: toString(parsed.document?.type) || 'HKUST_UNOFFICIAL_TRANSCRIPT',
-        isLikelyHKUSTTranscript: toBoolean(parsed.document?.isLikelyHKUSTTranscript, true),
+        isLikelyTranscript: toBoolean(parsed.document?.isLikelyTranscript, true),
         pages: parseNumericValue(parsed.document?.pages),
       },
       student: {
@@ -858,18 +858,18 @@ export function validateTranscriptResult(
     : [];
   const normalizedTextUpper = parseResult.normalizedText.toUpperCase();
 
-  const hasVerifiedHkustIdentity =
+  const hasVerifiedIdentity =
     Boolean(context.verifiedEmail) &&
     Boolean(context.emailConfirmed) &&
     /@(ust\.hk|connect\.ust\.hk)$/i.test(context.verifiedEmail || '');
-  if (hasVerifiedHkustIdentity) {
+  if (hasVerifiedIdentity) {
     score -= 4;
   } else {
     score += addReason(reasons, {
       code: 'UNVERIFIED_HKUST_IDENTITY',
       points: 4,
       category: 'identity',
-      message: 'Account is not a confirmed HKUST identity.',
+      message: 'Account is not a confirmed University identity.',
     });
   }
 
@@ -898,7 +898,7 @@ export function validateTranscriptResult(
       code: 'MISSING_HEADER',
       points: 5,
       category: 'structure',
-      message: 'Expected HKUST transcript header is missing.',
+      message: 'Expected University transcript header is missing.',
     });
   }
   if (!(footerPresent === true || footerPresentFromText)) {
@@ -991,7 +991,7 @@ export function validateTranscriptResult(
     });
   }
 
-  const likelyTranscriptFlag = (transcript.document as Record<string, unknown>)?.isLikelyHKUSTTranscript;
+  const likelyTranscriptFlag = (transcript.document as Record<string, unknown>)?.isLikelyTranscript;
   const likelyTranscript =
     typeof likelyTranscriptFlag === 'boolean'
       ? likelyTranscriptFlag
@@ -1001,7 +1001,7 @@ export function validateTranscriptResult(
       code: 'NOT_HKUST_TRANSCRIPT_SHAPE',
       points: 4,
       category: 'structure',
-      message: 'Document does not match expected HKUST transcript shape.',
+      message: 'Document does not match expected University transcript shape.',
     });
   }
 

@@ -329,7 +329,7 @@ export async function POST(request: NextRequest) {
         adminEmail: adminReviewEmails,
         studentName: profile?.full_name || user.email || 'Student',
         studentEmail: user.email || profile?.email || 'Unknown',
-        university: profile?.school || 'HKUST',
+        university: profile?.school || 'University',
         uploadDate,
         transcriptId,
         issueType: ISSUE_LABELS[issueType],

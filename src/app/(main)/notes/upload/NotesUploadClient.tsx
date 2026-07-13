@@ -12,6 +12,8 @@ import type { CourseWithMaterial } from '@/components/materials/CourseMaterialCa
 import { CourseSelectRow } from '@/components/materials/CourseSelectRow';
 
 const SEMESTERS = ['Fall', 'Winter', 'Spring', 'Summer'] as const;
+const NOTE_LANGUAGES = ['English', 'Mandarin', 'Other'] as const;
+type NoteLanguageOption = (typeof NOTE_LANGUAGES)[number];
 const MAX_ZIP_BYTES = 100 * 1024 * 1024;
 
 type MaterialsResponse = {
@@ -59,7 +61,8 @@ export default function NotesUploadPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [professor, setProfessor] = useState('');
-  const [language, setLanguage] = useState('English');
+  const [languageChoice, setLanguageChoice] = useState<NoteLanguageOption>('English');
+  const [customLanguage, setCustomLanguage] = useState('');
   const [priceHkd, setPriceHkd] = useState('49');
   const [timeRemaining, setTimeRemaining] = useState<Record<string, number>>({});
   const [reuploadWindowLabel, setReuploadWindowLabel] = useState('3 minutes');
@@ -231,6 +234,12 @@ export default function NotesUploadPage() {
       return;
     }
 
+    const resolvedLanguage = languageChoice === 'Other' ? customLanguage.trim() : languageChoice;
+    if (languageChoice === 'Other' && resolvedLanguage.length < 2) {
+      setError('Please enter the language used in your notes.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       let material = selectedMaterial;
@@ -291,7 +300,7 @@ export default function NotesUploadPage() {
           professor: professor.trim() || undefined,
           academicYear,
           semester,
-          language,
+          language: resolvedLanguage,
           priceHkd: Number(priceHkd),
           fileNames,
         })
@@ -556,7 +565,30 @@ export default function NotesUploadPage() {
                         <Label htmlFor="language" className="text-xs">
                           Language
                         </Label>
-                        <Input id="language" className="mt-1" value={language} onChange={(event) => setLanguage(event.target.value)} />
+                        <select
+                          id="language"
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          value={languageChoice}
+                          onChange={(event) =>
+                            setLanguageChoice(event.target.value as NoteLanguageOption)
+                          }
+                        >
+                          {NOTE_LANGUAGES.map((value) => (
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
+                          ))}
+                        </select>
+                        {languageChoice === 'Other' && (
+                          <Input
+                            id="custom-language"
+                            className="mt-2"
+                            value={customLanguage}
+                            onChange={(event) => setCustomLanguage(event.target.value)}
+                            placeholder="e.g. Japanese, Korean"
+                            maxLength={40}
+                          />
+                        )}
                       </div>
                       <div>
                         <Label htmlFor="price" className="text-xs">

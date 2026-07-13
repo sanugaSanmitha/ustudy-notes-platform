@@ -10,8 +10,8 @@ export function isValidManualSubmissionGrade(grade: string) {
   return MANUAL_SUBMISSION_GRADE_SET.has(grade.trim().toUpperCase());
 }
 
-/** HKUST-style letter grades commonly seen on transcripts. */
-const HKUST_GRADES = new Set([
+/** University-style letter grades commonly seen on transcripts. */
+const ST_GRADES = new Set([
   'A+', 'A', 'A-',
   'B+', 'B', 'B-',
   'C+', 'C', 'C-',
@@ -25,9 +25,9 @@ export type CourseValidationIssue = {
   message: string;
 };
 
-export function isValidHkustGrade(grade: string) {
+export function isValidGrade(grade: string) {
   const normalized = grade.trim().toUpperCase();
-  return HKUST_GRADES.has(normalized);
+  return ST_GRADES.has(normalized);
 }
 
 export function validateCourseRows(rows: CourseReviewRow[]): CourseValidationIssue[] {
@@ -49,8 +49,8 @@ export function validateCourseRows(rows: CourseReviewRow[]): CourseValidationIss
 
     if (!row.grade.trim()) {
       issues.push({ rowId: row.id, field: 'grade', message: 'Grade is required.' });
-    } else if (!isValidHkustGrade(row.grade)) {
-      issues.push({ rowId: row.id, field: 'grade', message: `Grade "${row.grade}" is not a recognized HKUST grade.` });
+    } else if (!isValidGrade(row.grade)) {
+      issues.push({ rowId: row.id, field: 'grade', message: `Grade "${row.grade}" is not a recognized University grade.` });
     }
 
     const key = `${row.courseCode.trim().toUpperCase()}`;
@@ -89,7 +89,7 @@ export async function validateCourseRowsAgainstCatalog(rows: CourseReviewRow[]):
       issues.push({
         rowId: row.id,
         field: 'courseCode',
-        message: `${code} is not in the HKUST course catalog.`,
+        message: `${code} is not in the University course catalog.`,
       });
     }
   }

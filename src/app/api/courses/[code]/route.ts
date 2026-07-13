@@ -25,7 +25,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     if (!result.primary) {
       return NextResponse.json(
-        { error: { code: 'NOT_FOUND', message: `Course ${context.params.code} was not found in the HKUST catalog.` } },
+        { error: { code: 'NOT_FOUND', message: `Course ${context.params.code} was not found in the University catalog.` } },
         { status: 404 }
       );
     }

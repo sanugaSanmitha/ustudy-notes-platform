@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "HKUST Notes Trading Platform",
-  description: "Secure note trading platform for HKUST students",
+  title: "Ustudy Notes Trading Platform",
+  description: "Secure note trading platform for university students",
 };
 
 export default async function RootLayout({

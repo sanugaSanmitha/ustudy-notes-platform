@@ -116,7 +116,7 @@ export default function LoginPage() {
         </Link>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Log In</h1>
-          <p className="text-slate-500">Access your HKUST Notes account</p>
+          <p className="text-slate-500">Access your Ustudy Notes account</p>
         </div>
 
         {error && (
@@ -156,7 +156,7 @@ export default function LoginPage() {
               name="email"
               value={formData.email}
               onChange={handleChange}
-              placeholder="your.email@connect.ust.hk"
+              placeholder="your.email@schooldomain.hk"
               className="w-full"
               disabled={loading}
             />

@@ -155,7 +155,7 @@ export default function VerifyEmailPage() {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail) {
-      setError('Enter your HKUST email address to resend the verification email.');
+      setError('Enter your University email address to resend the verification email.');
       setResendLoading(false);
       return;
     }
@@ -310,7 +310,7 @@ export default function VerifyEmailPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value.trim().toLowerCase())}
-              placeholder="your.email@connect.ust.hk"
+              placeholder="your.email@schooldomain.hk"
               className="w-full"
               disabled={resendLoading}
             />

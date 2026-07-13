@@ -10,7 +10,7 @@ export default function HomePage() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <section className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-          Find course notes from HKUST students
+          Find course notes from University students
         </h1>
         <p className="mt-3 max-w-2xl text-lg text-slate-500">
           Browse verified notes by course, semester, and grade. Buy securely and download instantly.

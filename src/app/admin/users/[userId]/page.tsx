@@ -164,7 +164,7 @@ export default function AdminUserDetailPage() {
               <dd className="font-medium text-slate-900">{user.fullName || '—'}</dd>
             </div>
             <div>
-              <dt className="text-slate-500">HKUST Email</dt>
+              <dt className="text-slate-500">University Email</dt>
               <dd className="text-slate-900">{user.email}</dd>
             </div>
             <div>

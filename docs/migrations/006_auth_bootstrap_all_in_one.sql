@@ -1,4 +1,4 @@
--- HKUST Notes Platform
+-- UStudy Notes Platform
 -- One-shot auth bootstrap for Supabase SQL Editor.
 -- Safe to run multiple times (idempotent).
 

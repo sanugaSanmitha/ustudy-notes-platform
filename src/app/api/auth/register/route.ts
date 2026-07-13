@@ -34,7 +34,7 @@ function registrationResponse(options?: { message?: string; tokenIssuedAt?: stri
 // Rate limit: 5 registrations per IP/email per hour
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(100, '1 h'),
+  limiter: Ratelimit.slidingWindow(5, '1 h'),
 });
 
 function getClientIp(request: NextRequest) {
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check HKUST email domain
+    // Check University email domain
     if (!isValidEmail(normalizedEmail)) {
       return NextResponse.json(
         {

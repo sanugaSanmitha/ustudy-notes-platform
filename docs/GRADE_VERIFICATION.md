@@ -9,7 +9,7 @@ This document describes the **current implementation** in this repository.
 
 ## Overview
 
-Grade verification confirms HKUST students before enabling seller access (`users.is_seller = true`).
+Grade verification confirms university students before enabling seller access (`users.is_seller = true`).
 
 Stack:
 

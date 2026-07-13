@@ -42,7 +42,7 @@ export function MainNavbar() {
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
           <span className="flex size-8 items-center justify-center rounded-lg bg-blue-600 text-sm text-white">H</span>
-          <span>HKUST Notes</span>
+          <span>University Notes</span>
         </Link>
 
         <nav className="flex items-center gap-1">

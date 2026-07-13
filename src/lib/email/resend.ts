@@ -11,9 +11,9 @@ export async function sendVerificationEmail(
     const { data, error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: email,
-      subject: 'Your HKUST Notes Verification Code',
+      subject: 'Your Ustudy Notes Verification Code',
       html: `
-        <h2>Welcome to HKUST Notes!</h2>
+        <h2>Welcome to Ustudy Notes!</h2>
         <p>Use this verification code to activate your account:</p>
         <div style="
           font-size: 22px;
@@ -53,7 +53,7 @@ export async function sendPasswordResetEmail(
     await resend.emails.send({
       from: EMAIL_FROM,
       to: email,
-      subject: 'Reset Your HKUST Notes Password',
+      subject: 'Reset Your Ustudy account Password',
       html: `
         <h2>Password Reset Request</h2>
         <p>Click the link below to reset your password:</p>

@@ -14,7 +14,7 @@ const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false },
 });
 
-const dataPath = resolve(process.cwd(), 'data/hkust-courses.json');
+const dataPath = resolve(process.cwd(), 'data/university-courses.json');
 const courses = JSON.parse(readFileSync(dataPath, 'utf8'));
 
 const BATCH_SIZE = 500;

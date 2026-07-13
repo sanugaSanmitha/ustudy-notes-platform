@@ -45,7 +45,7 @@ export default function RegisterPage() {
     const normalizedEmail = formData.email.trim().toLowerCase();
     if (!isStaffEmail(normalizedEmail) && !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)) {
       setError(
-        `Only HKUST emails (@ust.hk or @connect.ust.hk) are allowed, except ${staffEmailExceptionMessage()}.`
+        `Only @ust.hk or @connect.ust.hk email addresses are allowed (except ${staffEmailExceptionMessage()}).`
       );
       setLoading(false);
       return;
@@ -115,7 +115,7 @@ export default function RegisterPage() {
         </Link>
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Register</h1>
-          <p className="text-slate-500">Create your HKUST Notes account</p>
+          <p className="text-slate-500">Create your Ustudy account</p>
         </div>
 
         {error && (
@@ -135,12 +135,12 @@ export default function RegisterPage() {
               name="email"
               value={formData.email}
               onChange={handleChange}
-              placeholder="something@connect.ust.hk"
+              placeholder="yourstudentemail@schooldomain.hk"
               className="w-full"
               disabled={loading}
             />
             <p className="text-xs text-slate-500 mt-1">
-              Use your @ust.hk or @connect.ust.hk email address
+              Use your @schooldomain.hk email address
             </p>
           </div>
 

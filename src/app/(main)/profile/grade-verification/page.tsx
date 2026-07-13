@@ -6,7 +6,7 @@ export default function GradeVerificationAccountPage() {
   return (
     <div>
       <h1 className="text-3xl font-bold text-slate-900">Grade Verification</h1>
-      <p className="mt-2 text-slate-600">Verify your HKUST transcript to unlock seller features.</p>
+      <p className="mt-2 text-slate-600">Verify your University unofficial transcript to unlock seller features.</p>
       <Card className="mt-6 p-6">
         <div className="flex flex-wrap gap-3">
           <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white">

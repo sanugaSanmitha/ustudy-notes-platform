@@ -1,4 +1,4 @@
-# ROADMAP.md - HKUST Notes Trading Platform Development Roadmap
+# ROADMAP.md - UStudy Notes Trading Platform Development Roadmap
 
 > **Date**: 2026-07-04  
 > **Core Goal**: Completing the P0 tasks in order will deliver a fully functional MVP trading loop that is ready for launch.  
@@ -81,7 +81,7 @@ We use **Resend** for email delivery and **GitHub Student Developer Pack** to ge
     - 7a: Register with an `@ust.hk` or `@connect.ust.hk` email
     - 7b: Verification email sent via Resend from the verified custom domain (e.g., `noreply@yourdomain.dev`)
     - 7c: Click verification link -> status changes to `active` -> can log in
-    - 7d: Non-HKUST emails are blocked on the frontend with a clear message
+    - 7d: Non-university emails are blocked on the frontend with a clear message
     - 7e: Account locks for 15 minutes after 5 failed login attempts
     - 7f: Resend verification email limited to 3 times per day
   - **Dependencies**: Task 6

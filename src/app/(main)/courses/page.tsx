@@ -62,12 +62,12 @@ export default async function CoursesPage({ searchParams }: CoursesPageProps) {
         <Link href="/" className="text-sm text-blue-600 hover:underline">
           ← Back to home
         </Link>
-        <h1 className="mt-3 text-3xl font-bold text-slate-900">Browse HKUST courses</h1>
+        <h1 className="mt-3 text-3xl font-bold text-slate-900">Browse University courses</h1>
         <p className="mt-2 text-slate-500">Search the official course catalog and find notes for each course.</p>
       </div>
 
       <div className="mb-6">
-        <CourseSearchBar />
+        <CourseSearchBar defaultQuery={q} />
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">

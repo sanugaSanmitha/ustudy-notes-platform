@@ -1,14 +1,22 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-export function CourseSearchBar() {
+type CourseSearchBarProps = {
+  defaultQuery?: string;
+};
+
+export function CourseSearchBar({ defaultQuery = '' }: CourseSearchBarProps) {
   const router = useRouter();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(defaultQuery);
+
+  useEffect(() => {
+    setQuery(defaultQuery);
+  }, [defaultQuery]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -37,7 +45,7 @@ export function CourseSearchBar() {
           Search
         </Button>
       </div>
-      <p className="text-sm text-slate-400">Browse all 3,700+ HKUST undergraduate and postgraduate courses.</p>
+      <p className="text-sm text-slate-400">Browse all 3,700+ University undergraduate and postgraduate courses.</p>
     </form>
   );
 }

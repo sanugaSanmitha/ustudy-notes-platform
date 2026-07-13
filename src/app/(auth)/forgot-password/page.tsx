@@ -94,7 +94,7 @@ export default function ForgotPasswordPage() {
               name="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="your.email@connect.ust.hk"
+              placeholder="your.email@schooldomain.hk"
               className="w-full"
               disabled={loading}
             />

@@ -23,7 +23,20 @@ export default async function CourseDetailPage({ params }: PageProps) {
     getPublishedListingsForCourse(courseCode),
   ]);
 
-  if (!result.ok || !result.primary) {
+  if (!result.ok) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <Link href="/courses" className="text-sm text-blue-600 hover:underline">
+          ← Back to courses
+        </Link>
+        <Card className="mt-6 p-8 text-center text-sm text-red-600">
+          Course catalog is not ready. Run docs/migrations/019_courses_catalog.sql and npm run seed:courses.
+        </Card>
+      </div>
+    );
+  }
+
+  if (!result.primary) {
     notFound();
   }
 

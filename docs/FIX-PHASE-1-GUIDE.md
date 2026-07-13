@@ -1,6 +1,6 @@
 # Phase 1 Fix Guide — Do It Yourself
 
-**Project:** `hkust-notes-platform`  
+**Project:** `ustudy-notes-platform`  
 **Goal:** Fix login session, database tables, profile page, middleware, then test the full auth flow.  
 **Time:** ~1–2 hours
 
@@ -11,7 +11,7 @@ Work through the steps **in order**. Each step tells you which file to create or
 ## Before you start
 
 ```bash
-cd C:\Users\rasan\Desktop\hkust-notes-platform
+cd C:\Users\rasan\Desktop\ustudy-notes-platform
 npm run dev
 ```
 
@@ -111,7 +111,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Log In</h1>
-          <p className="text-slate-500">Access your HKUST Notes account</p>
+          <p className="text-slate-500">Access your UStudy Notes account</p>
         </div>
 
         {error && (
@@ -204,7 +204,7 @@ Paste this SQL:
 
 ```sql
 -- ============================================================
--- HKUST Notes Platform — Auth tables (Phase 1)
+-- UStudy Notes Platform — Auth tables (Phase 1)
 -- Run once in Supabase Dashboard → SQL Editor → Run
 -- ============================================================
 
@@ -534,10 +534,10 @@ export default function Home() {
     <main className="min-h-screen bg-white p-4">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl font-bold text-slate-900 mb-4">
-          HKUST Notes Platform
+          UStudy Notes Platform
         </h1>
         <p className="text-slate-500 mb-6">
-          Secure note trading for HKUST students.
+          Secure note trading for university students.
         </p>
         <div className="flex gap-4">
           <Link
@@ -570,13 +570,13 @@ export default function Home() {
 In `src/lib/email/resend.ts`, for local testing use Resend's test sender:
 
 ```typescript
-from: 'onboarding@resend.dev',  // use until you verify hkust-notes.com domain
+from: 'onboarding@resend.dev',  // use until you verify ustudy-notes.com domain
 ```
 
 After you verify your domain in Resend, switch back to:
 
 ```typescript
-from: 'noreply@hkust-notes.com',
+from: 'noreply@ustudy-notes.com',
 ```
 
 ---
@@ -604,7 +604,7 @@ Should finish with no errors.
 | 7 | Open `/profile` in incognito (not logged in) | Redirect to `/login` |
 | 8 | Click Log Out | Redirect to `/login` |
 | 9 | Visit `/profile` again | Redirect to `/login` |
-| 10 | Try register with `gmail.com` email | Error: HKUST email only |
+| 10 | Try register with `gmail.com` email | Error: university email only |
 
 ### 6.3 Verify in Supabase Table Editor
 

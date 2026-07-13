@@ -32,7 +32,7 @@ export async function MarketplaceSection() {
           <h3 className="text-lg font-medium text-slate-900">No notes yet</h3>
           <p className="mt-2 max-w-md text-sm text-slate-500">
             Published notes will show up here once sellers upload and admins approve them. You can already browse all
-            HKUST courses using search.
+            University courses using search.
           </p>
           <Button asChild variant="outline" className="mt-6">
             <Link href="/register">Become a seller</Link>

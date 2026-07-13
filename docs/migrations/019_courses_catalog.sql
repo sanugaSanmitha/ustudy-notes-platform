@@ -1,4 +1,4 @@
--- HKUST course catalog (reference data for search, validation, and title enrichment).
+-- University course catalog (reference data for search, validation, and title enrichment).
 create table if not exists public.courses (
   id uuid primary key default gen_random_uuid(),
   course_code text not null,

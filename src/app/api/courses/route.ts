@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { searchCourses } from '@/lib/courses/catalog';
 
-export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
