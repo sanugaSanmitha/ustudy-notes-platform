@@ -23,13 +23,13 @@ function sanitizeMerchantName(name: string) {
 }
 
 export function buildFpsEmvPayload(input: {
-  identifier: string;
+  fpsNumber: string;
   accountName: string;
   amountHkd: number;
   paymentReference: string;
 }) {
-  const identifier = input.identifier.replace(/\s+/g, '');
-  const merchantAccount = tlv('00', 'hk.com.hkicl') + tlv('02', identifier);
+  const fpsNumber = input.fpsNumber.replace(/\s+/g, '');
+  const merchantAccount = tlv('00', 'hk.com.hkicl') + tlv('02', fpsNumber);
   const additional = tlv('05', input.paymentReference.slice(0, 25));
   const amount = Math.max(0, input.amountHkd).toFixed(2);
 
@@ -55,7 +55,7 @@ export async function createFpsQrDataUrl(fps: FpsConfig, amountHkd: number, paym
   }
 
   const payload = buildFpsEmvPayload({
-    identifier: fps.identifier,
+    fpsNumber: fps.fpsNumber,
     accountName: fps.accountName,
     amountHkd,
     paymentReference,

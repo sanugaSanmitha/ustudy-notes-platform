@@ -123,12 +123,12 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
             .replace('{reference}', order.paymentReference)}
         </p>
 
-        {fps.identifier ? (
+        {fps.fpsNumber ? (
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('fpsIdentifier')}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('fpsNumber')}</p>
             <div className="mt-1 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
-              <span className="font-mono text-sm text-slate-900">{fps.identifier}</span>
-              <Button type="button" variant="ghost" size="sm" onClick={() => copy(fps.identifier, 'id')}>
+              <span className="font-mono text-sm text-slate-900">{fps.fpsNumber}</span>
+              <Button type="button" variant="ghost" size="sm" onClick={() => copy(fps.fpsNumber, 'id')}>
                 <Copy className="mr-1 size-3.5" />
                 {copied === 'id' ? t('fpsCopied') : t('fpsCopy')}
               </Button>

@@ -300,7 +300,7 @@ export type MessageKey =
   | 'fpsQrAlt'
   | 'fpsQrFailed'
   | 'fpsScanHint'
-  | 'fpsIdentifier'
+  | 'fpsNumber'
   | 'fpsCopied'
   | 'fpsCopy'
   | 'fpsPayTo'
@@ -653,9 +653,9 @@ const en: Record<MessageKey, string> = {
   fpsAmount: 'Amount',
   fpsScanBankingApp: 'Scan with your banking app',
   fpsQrAlt: 'FPS payment QR code',
-  fpsQrFailed: 'QR could not be generated. Send FPS to the identifier below.',
+  fpsQrFailed: 'QR could not be generated. Send FPS to the number below.',
   fpsScanHint: 'Scan this QR in your banking app, then send {amount} and enter {reference} as the payment message.',
-  fpsIdentifier: 'FPS identifier',
+  fpsNumber: 'FPS number',
   fpsCopied: 'Copied',
   fpsCopy: 'Copy',
   fpsPayTo: 'Pay to {name}',
@@ -1005,9 +1005,9 @@ const zhCN: Record<MessageKey, string> = {
   fpsAmount: '金额',
   fpsScanBankingApp: '使用银行 App 扫码',
   fpsQrAlt: 'FPS 付款二维码',
-  fpsQrFailed: '无法生成二维码，请向下方标识符发送 FPS 转账。',
+  fpsQrFailed: '无法生成二维码，请向下方号码发送 FPS 转账。',
   fpsScanHint: '用银行 App 扫描此二维码，然后转账 {amount}，并在转账备注填写 {reference}。',
-  fpsIdentifier: 'FPS 标识符',
+  fpsNumber: 'FPS 号码',
   fpsCopied: '已复制',
   fpsCopy: '复制',
   fpsPayTo: '收款方 {name}',
