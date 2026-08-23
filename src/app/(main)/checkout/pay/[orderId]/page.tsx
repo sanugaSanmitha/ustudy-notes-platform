@@ -29,8 +29,7 @@ export default async function FpsPayPage({ params }: PageProps) {
   }
 
   const fps = getFpsConfig();
-  const useBankQr = Boolean(fps.qrImageUrl);
-  const qrDataUrl = useBankQr ? null : await createFpsQrDataUrl(fps, order.totalHkd, order.paymentReference);
+  const qrDataUrl = fps.qrImageUrl ? null : await createFpsQrDataUrl(fps, order.totalHkd, order.paymentReference);
 
   return (
     <div className="px-4 py-10">

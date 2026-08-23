@@ -275,7 +275,7 @@ export function ProfileDrawer({
         aria-labelledby={titleId}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] left-2 right-2 top-2 flex flex-col overflow-hidden rounded-[12px] bg-white shadow-[0_8px_32px_rgba(31,47,102,0.12)] outline-none sm:bottom-[14px] sm:left-auto sm:right-[14px] sm:top-[14px] sm:w-[min(388px,calc(100vw-28px))]"
+        className="fixed bottom-2 left-2 right-2 top-2 flex flex-col overflow-hidden rounded-[12px] bg-white shadow-[0_8px_32px_rgba(31,47,102,0.12)] outline-none sm:bottom-[14px] sm:left-auto sm:right-[14px] sm:top-[14px] sm:w-[min(388px,calc(100vw-28px))]"
       >
         <button
           type="button"
