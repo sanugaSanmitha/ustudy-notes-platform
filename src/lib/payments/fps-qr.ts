@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import type { FpsConfig } from '@/lib/payments/fps';
+import { fpsProxyForQr, type FpsConfig } from '@/lib/payments/fps';
 
 function tlv(id: string, value: string) {
   const length = String(value.length).padStart(2, '0');
@@ -50,12 +50,13 @@ export function buildFpsEmvPayload(input: {
 }
 
 export async function createFpsQrDataUrl(fps: FpsConfig, amountHkd: number, paymentReference: string) {
-  if (!fps.enabled) {
+  const proxy = fpsProxyForQr(fps);
+  if (!fps.enabled || !proxy) {
     return null;
   }
 
   const payload = buildFpsEmvPayload({
-    fpsNumber: fps.fpsNumber,
+    fpsNumber: proxy,
     accountName: fps.accountName,
     amountHkd,
     paymentReference,

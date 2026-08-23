@@ -301,6 +301,14 @@ export type MessageKey =
   | 'fpsQrFailed'
   | 'fpsScanHint'
   | 'fpsNumber'
+  | 'fpsIdentifier'
+  | 'fpsQrCode'
+  | 'fpsMethodId'
+  | 'fpsMethodNumber'
+  | 'fpsMethodQr'
+  | 'fpsIdentifierOptions'
+  | 'fpsSendToNumber'
+  | 'fpsSendToIdentifier'
   | 'fpsCopied'
   | 'fpsCopy'
   | 'fpsPayTo'
@@ -656,6 +664,14 @@ const en: Record<MessageKey, string> = {
   fpsQrFailed: 'QR could not be generated. Send FPS to the number below.',
   fpsScanHint: 'Scan this QR in your banking app, then send {amount} and enter {reference} as the payment message.',
   fpsNumber: 'FPS number',
+  fpsIdentifier: 'FPS identifier',
+  fpsQrCode: 'FPS QR code',
+  fpsMethodId: 'ID',
+  fpsMethodNumber: 'No.',
+  fpsMethodQr: 'QR',
+  fpsIdentifierOptions: 'FPS payment identifier',
+  fpsSendToNumber: 'Send to this FPS number',
+  fpsSendToIdentifier: 'Send to this FPS identifier',
   fpsCopied: 'Copied',
   fpsCopy: 'Copy',
   fpsPayTo: 'Pay to {name}',
@@ -1008,6 +1024,14 @@ const zhCN: Record<MessageKey, string> = {
   fpsQrFailed: '无法生成二维码，请向下方号码发送 FPS 转账。',
   fpsScanHint: '用银行 App 扫描此二维码，然后转账 {amount}，并在转账备注填写 {reference}。',
   fpsNumber: 'FPS 号码',
+  fpsIdentifier: 'FPS 识别码',
+  fpsQrCode: 'FPS 二维码',
+  fpsMethodId: 'ID',
+  fpsMethodNumber: 'No.',
+  fpsMethodQr: 'QR',
+  fpsIdentifierOptions: 'FPS 付款标识',
+  fpsSendToNumber: '向此 FPS 号码转账',
+  fpsSendToIdentifier: '向此 FPS 识别码转账',
   fpsCopied: '已复制',
   fpsCopy: '复制',
   fpsPayTo: '收款方 {name}',

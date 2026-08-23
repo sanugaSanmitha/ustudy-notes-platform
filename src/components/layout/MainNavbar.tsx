@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Archive, BookOpen, Notebook, ShieldCheck, ShoppingCart, Upload } from 'lucide-react';
 import { BrandLogo } from '@/components/brand/BrandLogo';
 import { CartNavLink } from '@/components/cart/CartNavLink';
 import { ProfileDrawer } from '@/components/account/ProfileDrawer';
+import { MobileNavDrawer, MobileNavMenuButton } from '@/components/layout/MobileNavDrawer';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { LocaleToggle } from '@/components/i18n/LocaleToggle';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ export function MainNavbar() {
   const { t } = useLocale();
   const { isLoggedIn, isReviewer, sellerNavLink, displayName, email, avatarUrl, refreshNavAuth } = useSellerNav();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
     { href: '/', label: t('navBrowser'), icon: BookOpen },
@@ -33,6 +35,10 @@ export function MainNavbar() {
   ] as const;
 
   const handleCloseProfile = useCallback(() => setProfileOpen(false), []);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   const handleLogout = useCallback(async () => {
     const supabase = createClient();
@@ -63,38 +69,66 @@ export function MainNavbar() {
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-50 bg-white/80 backdrop-blur-[8px]">
-      <div className="flex items-center justify-between gap-3 px-4 py-2 md:hidden">
-        <BrandLogo compact />
-        <div className="flex items-center gap-2">
-          <LocaleToggle />
-          {isLoggedIn === null ? (
-            <div className="h-9 w-9 animate-pulse rounded-full bg-white/70" />
-          ) : isLoggedIn ? (
-            <button
-              type="button"
-              onClick={() => setProfileOpen((open) => !open)}
-              aria-expanded={profileOpen}
-              aria-haspopup="dialog"
-              className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#213f73] text-[11px] font-medium text-white"
-            >
-              {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarUrl} alt="" className="size-full object-cover" />
-              ) : (
-                initials || 'U'
-              )}
-            </button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Button asChild variant="ghost" size="sm" className="h-8 px-1.5 text-[#1f2f66] sm:px-2">
-                <Link href="/login">{t('navLogin')}</Link>
-              </Button>
-              <Button asChild size="sm" className="h-8 rounded-full bg-[#1f2f66] px-2.5 text-white hover:bg-[#18244f] hover:text-white sm:px-3">
-                <Link href="/register">{t('navRegister')}</Link>
-              </Button>
-            </div>
-          )}
+      <div className="flex items-center gap-2 px-4 py-2 md:hidden">
+        <div className="flex h-10 min-w-0 flex-1 items-stretch rounded-full bg-[#e4eeff] shadow-[0px_4px_7px_0px_rgba(0,0,0,0.25)]">
+          <MobileNavMenuButton open={mobileMenuOpen} onClick={() => setMobileMenuOpen((open) => !open)} />
+          {navLinks.slice(0, 2).map(({ href, label, icon: Icon }) => {
+            const isActive =
+              href === '/'
+                ? pathname === '/'
+                : pathname.startsWith(href);
+            const pillClassName = cn(
+              'flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2 text-[12px] font-normal transition-colors',
+              isActive ? 'bg-[#213f73] text-white' : 'text-black hover:bg-white/40'
+            );
+
+            if (href === '/cart') {
+              return (
+                <CartNavLink
+                  key={`mobile-${href}`}
+                  href={href}
+                  label={label}
+                  icon={Icon}
+                  isActive={isActive}
+                  variant="pill"
+                  className={pillClassName}
+                />
+              );
+            }
+
+            return (
+              <Link key={`mobile-${href}`} href={href} className={pillClassName}>
+                <Icon className="size-3.5 shrink-0" />
+                <span className="truncate">{label}</span>
+              </Link>
+            );
+          })}
         </div>
+
+        <LocaleToggle />
+
+        {isLoggedIn === null ? (
+          <div className="size-9 shrink-0 animate-pulse rounded-full bg-white/70" />
+        ) : isLoggedIn ? (
+          <button
+            type="button"
+            onClick={() => setProfileOpen((open) => !open)}
+            aria-expanded={profileOpen}
+            aria-haspopup="dialog"
+            className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#213f73] text-[11px] font-medium text-white"
+          >
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl} alt="" className="size-full object-cover" />
+            ) : (
+              initials || 'U'
+            )}
+          </button>
+        ) : (
+          <Button asChild size="sm" className="h-9 shrink-0 rounded-full bg-[#1f2f66] px-3 text-white hover:bg-[#18244f] hover:text-white">
+            <Link href="/login">{t('navLogin')}</Link>
+          </Button>
+        )}
       </div>
 
       <div className="mx-auto hidden max-w-6xl items-center justify-between gap-3 px-4 py-2.5 md:flex">
@@ -181,6 +215,7 @@ export function MainNavbar() {
         </div>
       </div>
     </header>
+      <MobileNavDrawer open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
       {profileDrawer}
       <div className="h-14 shrink-0 md:h-[80px]" aria-hidden />
     </>

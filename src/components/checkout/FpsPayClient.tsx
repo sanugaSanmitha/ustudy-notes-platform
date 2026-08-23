@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { formatHkd } from '@/lib/utils/cart-utils';
+import { cn } from '@/lib/utils';
 import type { BuyerOrder } from '@/lib/orders/repository';
-import type { FpsConfig } from '@/lib/payments/fps';
+import type { FpsConfig, FpsIdentifierMethod } from '@/lib/payments/fps-types';
 
 type FpsPayClientProps = {
   order: BuyerOrder;
@@ -25,12 +26,31 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(alreadySubmitted);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState<'id' | 'ref' | null>(null);
+  const [copied, setCopied] = useState<'proxy' | 'ref' | null>(null);
   const [qrFailed, setQrFailed] = useState(false);
+
   const qrSrc = qrDataUrl || fps.qrImageUrl;
   const amountLabel = formatHkd(order.totalHkd);
+  const methods = useMemo(
+    () =>
+      [
+        { id: 'identifier' as const, label: t('fpsMethodId'), available: Boolean(fps.fpsIdentifier) },
+        { id: 'number' as const, label: t('fpsMethodNumber'), available: Boolean(fps.fpsNumber) },
+        { id: 'qr' as const, label: t('fpsMethodQr'), available: Boolean(qrSrc) && !qrFailed },
+      ] satisfies Array<{ id: FpsIdentifierMethod; label: string; available: boolean }>,
+    [fps.fpsIdentifier, fps.fpsNumber, qrFailed, qrSrc, t]
+  );
 
-  const copy = async (value: string, key: 'id' | 'ref') => {
+  const [method, setMethod] = useState<FpsIdentifierMethod>(() => {
+    const available = methods.filter((option) => option.available).map((option) => option.id);
+    return (['qr', 'number', 'identifier'] as const).find((id) => available.includes(id)) ?? 'number';
+  });
+
+  const activeMethod = methods.find((option) => option.id === method)?.available
+    ? method
+    : methods.find((option) => option.available)?.id ?? method;
+
+  const copy = async (value: string, key: 'proxy' | 'ref') => {
     await navigator.clipboard.writeText(value);
     setCopied(key);
     window.setTimeout(() => setCopied(null), 1500);
@@ -78,6 +98,13 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
     );
   }
 
+  const heading =
+    activeMethod === 'qr'
+      ? t('fpsScanBankingApp')
+      : activeMethod === 'identifier'
+        ? t('fpsSendToIdentifier')
+        : t('fpsSendToNumber');
+
   return (
     <div className="mx-auto max-w-lg space-y-5">
       <div>
@@ -101,43 +128,91 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
         </ul>
       </Card>
 
-      <Card className="space-y-4 p-5">
-        <p className="text-sm font-semibold text-slate-900">{t('fpsScanBankingApp')}</p>
-        {qrSrc && !qrFailed ? (
-          <div className="mx-auto w-fit rounded-xl border border-slate-200 bg-white p-3">
-            <img
-              src={qrSrc}
-              alt={t('fpsQrAlt')}
-              width={220}
-              height={220}
-              className="size-[220px] object-contain"
-              onError={() => setQrFailed(true)}
-            />
-          </div>
-        ) : (
-          <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{t('fpsQrFailed')}</p>
-        )}
-        <p className="text-center text-xs text-slate-500">
-          {t('fpsScanHint')
-            .replace('{amount}', amountLabel)
-            .replace('{reference}', order.paymentReference)}
-        </p>
+      <Card className="relative space-y-4 p-5">
+        <div
+          role="group"
+          aria-label={t('fpsIdentifierOptions')}
+          className="absolute right-3 top-3 inline-flex h-8 items-center rounded-full bg-[#e4eeff] p-0.5 shadow-[0px_2px_4px_0px_rgba(0,0,0,0.12)]"
+        >
+          {methods.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              disabled={!option.available}
+              aria-pressed={activeMethod === option.id}
+              aria-label={
+                option.id === 'identifier'
+                  ? t('fpsIdentifier')
+                  : option.id === 'number'
+                    ? t('fpsNumber')
+                    : t('fpsQrCode')
+              }
+              onClick={() => option.available && setMethod(option.id)}
+              className={cn(
+                'h-full min-w-[32px] rounded-full px-2 text-[11px] font-semibold leading-none transition-colors',
+                !option.available && 'cursor-not-allowed text-slate-400 opacity-40',
+                option.available && activeMethod === option.id && 'bg-[#213f73] text-white',
+                option.available && activeMethod !== option.id && 'text-[#1f2f66]/70 hover:text-[#1f2f66]'
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
 
-        {fps.fpsNumber ? (
+        <p className="pr-[148px] text-sm font-semibold text-slate-900">{heading}</p>
+
+        {activeMethod === 'qr' ? (
+          qrSrc && !qrFailed ? (
+            <>
+              <div className="mx-auto w-fit rounded-xl border border-slate-200 bg-white p-3">
+                <img
+                  src={qrSrc}
+                  alt={t('fpsQrAlt')}
+                  width={220}
+                  height={220}
+                  className="size-[220px] object-contain"
+                  onError={() => setQrFailed(true)}
+                />
+              </div>
+              <p className="text-center text-xs text-slate-500">
+                {t('fpsScanHint')
+                  .replace('{amount}', amountLabel)
+                  .replace('{reference}', order.paymentReference)}
+              </p>
+            </>
+          ) : (
+            <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{t('fpsQrFailed')}</p>
+          )
+        ) : null}
+
+        {activeMethod === 'number' && fps.fpsNumber ? (
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('fpsNumber')}</p>
             <div className="mt-1 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
               <span className="font-mono text-sm text-slate-900">{fps.fpsNumber}</span>
-              <Button type="button" variant="ghost" size="sm" onClick={() => copy(fps.fpsNumber, 'id')}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => copy(fps.fpsNumber, 'proxy')}>
                 <Copy className="mr-1 size-3.5" />
-                {copied === 'id' ? t('fpsCopied') : t('fpsCopy')}
+                {copied === 'proxy' ? t('fpsCopied') : t('fpsCopy')}
               </Button>
             </div>
-            <p className="mt-1 text-xs text-slate-500">{t('fpsPayTo').replace('{name}', fps.accountName)}</p>
           </div>
-        ) : (
-          <p className="text-xs text-slate-500">{t('fpsPayTo').replace('{name}', fps.accountName)}</p>
-        )}
+        ) : null}
+
+        {activeMethod === 'identifier' && fps.fpsIdentifier ? (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('fpsIdentifier')}</p>
+            <div className="mt-1 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+              <span className="font-mono text-sm text-slate-900">{fps.fpsIdentifier}</span>
+              <Button type="button" variant="ghost" size="sm" onClick={() => copy(fps.fpsIdentifier, 'proxy')}>
+                <Copy className="mr-1 size-3.5" />
+                {copied === 'proxy' ? t('fpsCopied') : t('fpsCopy')}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        <p className="text-xs text-slate-500">{t('fpsPayTo').replace('{name}', fps.accountName)}</p>
 
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t('fpsPaymentReference')}</p>
