@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,31 @@ import { useLocale } from '@/components/i18n/LocaleProvider';
 import { createClient } from '@/lib/supabase/client';
 
 export default function UpdatePasswordPage() {
+  return (
+    <Suspense fallback={<UpdatePasswordFallback />}>
+      <UpdatePasswordForm />
+    </Suspense>
+  );
+}
+
+function UpdatePasswordFallback() {
+  const { t } = useLocale();
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-sm">
+        <div className="h-8 w-2/3 animate-pulse rounded bg-slate-100" />
+        <div className="mt-6 space-y-3">
+          <div className="h-10 animate-pulse rounded-md bg-slate-100" />
+          <div className="h-10 animate-pulse rounded-md bg-slate-100" />
+        </div>
+        <p className="sr-only">{t('updatePassword')}</p>
+      </div>
+    </div>
+  );
+}
+
+function UpdatePasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useLocale();

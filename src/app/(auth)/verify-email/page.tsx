@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +46,28 @@ function normalizeVerificationToken(input: string) {
 }
 
 export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<VerifyEmailFallback />}>
+      <VerifyEmailForm />
+    </Suspense>
+  );
+}
+
+function VerifyEmailFallback() {
+  const { t } = useLocale();
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-sm">
+        <div className="h-8 w-2/3 animate-pulse rounded bg-slate-100" />
+        <div className="mt-6 h-10 animate-pulse rounded-md bg-slate-100" />
+        <p className="sr-only">{t('authVerifyTitle')}</p>
+      </div>
+    </div>
+  );
+}
+
+function VerifyEmailForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useLocale();

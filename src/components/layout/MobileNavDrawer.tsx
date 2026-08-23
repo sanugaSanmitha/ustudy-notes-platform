@@ -1,8 +1,9 @@
 'use client';
 
+import { forwardRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Archive, Menu, Notebook, ShieldCheck, Upload, X } from 'lucide-react';
+import { Archive, LogIn, Menu, Notebook, ShieldCheck, Upload, UserPlus, X } from 'lucide-react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { useSellerNav } from '@/hooks/useSellerNav';
 import { cn } from '@/lib/utils';
@@ -10,28 +11,36 @@ import { cn } from '@/lib/utils';
 type MobileNavDrawerProps = {
   open: boolean;
   onClose: () => void;
+  onOpenProfile?: () => void;
 };
 
-export function MobileNavDrawer({ open, onClose }: MobileNavDrawerProps) {
+export function MobileNavDrawer({ open, onClose, onOpenProfile }: MobileNavDrawerProps) {
   const pathname = usePathname();
   const { t } = useLocale();
-  const { isLoggedIn, isReviewer, sellerNavLink } = useSellerNav();
+  const { isLoggedIn, isReviewer, sellerNavLink, displayName, email, avatarUrl } = useSellerNav();
 
-  const drawerLinks = isLoggedIn
-    ? [
-        {
-          href: sellerNavLink.href,
-          label: t('navUploader'),
-          icon: sellerNavLink.labelKey === 'sellerNotesUpload' ? Upload : ShieldCheck,
-        },
-        { href: '/courses', label: t('navCourses'), icon: Notebook },
-        { href: '/profile', label: t('navLocker'), icon: Archive },
-        ...(isReviewer ? [{ href: '/admin/support', label: 'Support', icon: ShieldCheck }] : []),
-      ]
-    : [
-        { href: '/courses', label: t('navCourses'), icon: Notebook },
-        { href: '/login', label: t('navLogin'), icon: Archive },
-      ];
+  const initials = (displayName || email || 'U')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('');
+
+  const drawerLinks = [
+    {
+      href: sellerNavLink.href,
+      label: t('navUploader'),
+      icon: sellerNavLink.labelKey === 'sellerNotesUpload' ? Upload : ShieldCheck,
+    },
+    { href: '/courses', label: t('navCourses'), icon: Notebook },
+    { href: '/profile', label: t('navLocker'), icon: Archive },
+    ...(isReviewer ? [{ href: '/admin/support', label: t('navSupport'), icon: ShieldCheck }] : []),
+    ...(!isLoggedIn
+      ? [
+          { href: '/login', label: t('navLogin'), icon: LogIn },
+          { href: '/register', label: t('navRegister'), icon: UserPlus },
+        ]
+      : []),
+  ];
 
   if (!open) return null;
 
@@ -43,7 +52,7 @@ export function MobileNavDrawer({ open, onClose }: MobileNavDrawerProps) {
         aria-label={t('closeProfile')}
         onClick={onClose}
       />
-      <aside className="absolute bottom-0 left-0 top-0 flex w-[min(149px,42vw)] flex-col bg-[#e4eeff] shadow-[4px_0_24px_rgba(31,47,102,0.12)]">
+      <aside className="absolute bottom-0 left-0 top-0 flex w-[min(149px,70vw)] flex-col bg-[#e4eeff] shadow-[4px_0_24px_rgba(31,47,102,0.12)]">
         <div className="flex items-center justify-end px-3 pb-2 pt-3">
           <button
             type="button"
@@ -55,59 +64,87 @@ export function MobileNavDrawer({ open, onClose }: MobileNavDrawerProps) {
           </button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 px-3 pb-6 pt-2">
-          {drawerLinks.map(({ href, label, icon: Icon }) => {
-            const isActive =
-              href === '/'
-                ? pathname === '/'
-                : href.startsWith('/courses')
-                  ? pathname === '/courses' || pathname.startsWith('/courses/')
-                  : pathname.startsWith(href);
+        <nav className="flex flex-1 flex-col px-5 pb-6 pt-2">
+          <div className="flex flex-col gap-1">
+            {drawerLinks.map(({ href, label, icon: Icon }) => {
+              const isActive =
+                href === '/'
+                  ? pathname === '/'
+                  : href.startsWith('/courses')
+                    ? pathname === '/courses' || pathname.startsWith('/courses/')
+                    : pathname.startsWith(href);
 
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={onClose}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-2 py-2.5 text-[13px] font-normal transition-colors',
-                  isActive ? 'bg-white/70 text-black' : 'text-black/80 hover:bg-white/50'
+              return (
+                <Link
+                  key={`${href}-${label}`}
+                  href={href}
+                  onClick={onClose}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-2 py-2.5 text-[13px] font-normal transition-colors',
+                    isActive ? 'bg-white/70 text-black' : 'text-black/80 hover:bg-white/50'
+                  )}
+                >
+                  <Icon className="size-5 shrink-0 stroke-[1.5]" />
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {isLoggedIn && onOpenProfile ? (
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              aria-haspopup="dialog"
+              className="mt-auto flex w-full flex-col items-start gap-1 pb-1 pt-4 text-left transition-opacity hover:opacity-90"
+            >
+              <span className="flex size-[100px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#213f73] text-[24px] font-medium text-white">
+                {avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarUrl} alt="" className="size-full object-cover" />
+                ) : (
+                  initials || 'U'
                 )}
-              >
-                <Icon className="size-5 shrink-0 stroke-[1.5]" />
-                <span>{label}</span>
-              </Link>
-            );
-          })}
+              </span>
+              <span className="w-full truncate text-[13px] font-normal leading-normal text-black/80">
+                {displayName || email?.split('@')[0] || 'Account'}
+              </span>
+              {email ? (
+                <span className="w-full truncate text-[10px] font-normal leading-normal text-black/80">
+                  {email}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
         </nav>
       </aside>
     </div>
   );
 }
 
-export function MobileNavMenuButton({
-  open,
-  onClick,
-  className,
-}: {
-  open: boolean;
-  onClick: () => void;
-  className?: string;
-}) {
+export const MobileNavMenuButton = forwardRef<
+  HTMLButtonElement,
+  {
+    open: boolean;
+    onClick: () => void;
+    className?: string;
+  }
+>(function MobileNavMenuButton({ open, onClick, className }, ref) {
   const { t } = useLocale();
 
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       aria-expanded={open}
       aria-label={open ? t('closeProfile') : 'Menu'}
       className={cn(
-        'flex h-full w-10 shrink-0 items-center justify-center rounded-[13px] bg-[#213f73] text-white transition-colors',
+        'flex shrink-0 items-center justify-center text-current transition-colors',
         className
       )}
     >
       <Menu className="size-5" />
     </button>
   );
-}
+});

@@ -7,7 +7,8 @@ import { Archive, BookOpen, Notebook, ShieldCheck, ShoppingCart, Upload } from '
 import { BrandLogo } from '@/components/brand/BrandLogo';
 import { CartNavLink } from '@/components/cart/CartNavLink';
 import { ProfileDrawer } from '@/components/account/ProfileDrawer';
-import { MobileNavDrawer, MobileNavMenuButton } from '@/components/layout/MobileNavDrawer';
+import { MobileNavDrawer } from '@/components/layout/MobileNavDrawer';
+import { NavCapsule } from '@/components/layout/NavCapsule';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { LocaleToggle } from '@/components/i18n/LocaleToggle';
 import { Button } from '@/components/ui/button';
@@ -69,153 +70,134 @@ export function MainNavbar() {
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-50 bg-white/80 backdrop-blur-[8px]">
-      <div className="flex items-center gap-2 px-4 py-2 md:hidden">
-        <div className="flex h-10 min-w-0 flex-1 items-stretch rounded-full bg-[#e4eeff] shadow-[0px_4px_7px_0px_rgba(0,0,0,0.25)]">
-          <MobileNavMenuButton open={mobileMenuOpen} onClick={() => setMobileMenuOpen((open) => !open)} />
-          {navLinks.slice(0, 2).map(({ href, label, icon: Icon }) => {
-            const isActive =
-              href === '/'
-                ? pathname === '/'
-                : pathname.startsWith(href);
-            const pillClassName = cn(
-              'flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2 text-[12px] font-normal transition-colors',
-              isActive ? 'bg-[#213f73] text-white' : 'text-black hover:bg-white/40'
-            );
-
-            if (href === '/cart') {
-              return (
-                <CartNavLink
-                  key={`mobile-${href}`}
-                  href={href}
-                  label={label}
-                  icon={Icon}
-                  isActive={isActive}
-                  variant="pill"
-                  className={pillClassName}
-                />
-              );
-            }
-
-            return (
-              <Link key={`mobile-${href}`} href={href} className={pillClassName}>
-                <Icon className="size-3.5 shrink-0" />
-                <span className="truncate">{label}</span>
-              </Link>
-            );
-          })}
-        </div>
-
-        <LocaleToggle />
-
-        {isLoggedIn === null ? (
-          <div className="size-9 shrink-0 animate-pulse rounded-full bg-white/70" />
-        ) : isLoggedIn ? (
-          <button
-            type="button"
-            onClick={() => setProfileOpen((open) => !open)}
-            aria-expanded={profileOpen}
-            aria-haspopup="dialog"
-            className="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#213f73] text-[11px] font-medium text-white"
-          >
-            {avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatarUrl} alt="" className="size-full object-cover" />
-            ) : (
-              initials || 'U'
-            )}
-          </button>
-        ) : (
-          <Button asChild size="sm" className="h-9 shrink-0 rounded-full bg-[#1f2f66] px-3 text-white hover:bg-[#18244f] hover:text-white">
-            <Link href="/login">{t('navLogin')}</Link>
-          </Button>
-        )}
-      </div>
-
-      <div className="mx-auto hidden max-w-6xl items-center justify-between gap-3 px-4 py-2.5 md:flex">
-        <BrandLogo className="hidden min-w-0 shrink-0 md:flex xl:min-w-[180px]" />
-
-        <nav className="flex h-10 min-w-0 flex-1 items-stretch justify-center rounded-full bg-[#e4eeff] shadow-[0px_4px_7px_0px_rgba(0,0,0,0.25)] md:max-w-[720px]">
-          {navLinks.map(({ href, label, icon: Icon }) => {
-            const isActive =
-              href === '/'
-                ? pathname === '/'
-                : href.startsWith('/courses')
-                  ? pathname === '/courses' || pathname.startsWith('/courses/')
-                  : pathname.startsWith(href);
-            const pillClassName = cn(
-              'flex h-full min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-1.5 text-[12px] font-normal transition-colors lg:gap-1.5 lg:px-3 lg:text-[13px]',
-              isActive ? 'bg-[#213f73] text-white' : 'text-black hover:bg-white/40'
-            );
-
-            if (href === '/cart') {
-              return (
-                <CartNavLink
-                  key={`${href}-${label}`}
-                  href={href}
-                  label={label}
-                  icon={Icon}
-                  isActive={isActive}
-                  variant="pill"
-                  className={pillClassName}
-                />
-              );
-            }
-
-            return (
-              <Link key={`${href}-${label}`} href={href} className={pillClassName}>
-                <Icon className="size-3.5 shrink-0" />
-                <span className="hidden truncate lg:inline">{label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="flex min-w-0 shrink-0 items-center justify-end gap-2 lg:min-w-[180px]">
-          <LocaleToggle />
-          {isLoggedIn === null ? (
-            <div className="h-8 w-24 animate-pulse rounded-full bg-white/70 lg:w-36" />
-          ) : isLoggedIn ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setProfileOpen((open) => !open)}
-                aria-expanded={profileOpen}
-                aria-haspopup="dialog"
-                className="flex items-center gap-2 text-left"
-              >
-                <span className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#213f73] text-xs font-medium text-white lg:h-[57px] lg:w-[64px]">
-                  {avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="" className="size-full object-cover" />
-                  ) : (
-                    initials || 'U'
-                  )}
-                </span>
-                <span className="hidden max-w-[160px] text-left xl:block">
-                  <span className="block truncate text-[13px] font-normal leading-tight text-black">{displayName}</span>
-                  <span className="block truncate text-[11px] font-normal text-black/80">{email}</span>
-                </span>
-              </button>
-              {isReviewer && (
-                <Button asChild variant="ghost" size="sm" className="hidden text-[#1f2f66] xl:inline-flex">
-                  <Link href="/admin/support">Support</Link>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 md:hidden">
+          <div className="flex min-w-0 items-center justify-center max-[420px]:justify-start">
+            <NavCapsule
+              menuOpen={mobileMenuOpen}
+              onMenuClick={() => {
+                setProfileOpen(false);
+                setMobileMenuOpen((open) => !open);
+              }}
+              className="max-w-full"
+            />
+          </div>
+          <div className="flex shrink-0 items-center justify-end gap-1.5 pl-1">
+            <LocaleToggle />
+            {isLoggedIn === false && (
+              <>
+                <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-[#1f2f66]">
+                  <Link href="/login">{t('navLogin')}</Link>
                 </Button>
-              )}
-            </>
-          ) : (
-            <>
-              <Button asChild variant="ghost" size="sm" className="text-[#1f2f66]">
-                <Link href="/login">{t('navLogin')}</Link>
-              </Button>
-              <Button asChild size="sm" className="rounded-full bg-[#1f2f66] text-white hover:bg-[#18244f] hover:text-white">
-                <Link href="/register">{t('navRegister')}</Link>
-              </Button>
-            </>
-          )}
+                <Button
+                  asChild
+                  size="sm"
+                  className="h-8 rounded-full bg-[#1f2f66] px-2.5 text-white hover:bg-[#18244f] hover:text-white"
+                >
+                  <Link href="/register">{t('navRegister')}</Link>
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </header>
-      <MobileNavDrawer open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+
+        <div className="mx-auto hidden max-w-6xl items-center justify-between gap-3 px-4 py-2.5 md:flex">
+          <BrandLogo className="hidden min-w-0 shrink-0 md:flex xl:min-w-[180px]" />
+
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+            <nav className="flex h-11 min-w-0 flex-1 items-stretch justify-center rounded-full bg-[#e4eeff] shadow-[0px_4px_7px_0px_rgba(0,0,0,0.25)] md:max-w-[720px]">
+            {navLinks.map(({ href, label, icon: Icon }) => {
+              const isActive =
+                href === '/'
+                  ? pathname === '/'
+                  : href.startsWith('/courses')
+                    ? pathname === '/courses' || pathname.startsWith('/courses/')
+                    : pathname.startsWith(href);
+              const pillClassName = cn(
+                'flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2 text-[12px] font-normal transition-colors lg:px-3 lg:text-[13px]',
+                isActive ? 'bg-[#213f73] text-white' : 'text-black hover:bg-white/40'
+              );
+
+              if (href === '/cart') {
+                return (
+                  <CartNavLink
+                    key={`${href}-${label}`}
+                    href={href}
+                    label={label}
+                    icon={Icon}
+                    isActive={isActive}
+                    variant="pill"
+                    className={pillClassName}
+                  />
+                );
+              }
+
+              return (
+                <Link key={`${href}-${label}`} href={href} className={pillClassName}>
+                  <Icon className="size-3.5 shrink-0" />
+                  <span className="truncate">{label}</span>
+                </Link>
+              );
+            })}
+            </nav>
+            <LocaleToggle />
+          </div>
+
+          <div className="flex min-w-0 shrink-0 items-center justify-end gap-2 lg:min-w-[180px]">
+            {isLoggedIn === null ? (
+              <div className="h-8 w-24 animate-pulse rounded-full bg-white/70 lg:w-36" />
+            ) : isLoggedIn ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen((open) => !open)}
+                  aria-expanded={profileOpen}
+                  aria-haspopup="dialog"
+                  className="flex items-center gap-2 text-left"
+                >
+                  <span className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#213f73] text-xs font-medium text-white lg:h-[57px] lg:w-[64px]">
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarUrl} alt="" className="size-full object-cover" />
+                    ) : (
+                      initials || 'U'
+                    )}
+                  </span>
+                  <span className="hidden max-w-[160px] text-left xl:block">
+                    <span className="block truncate text-[13px] font-normal leading-tight text-black">{displayName}</span>
+                    <span className="block truncate text-[11px] font-normal text-black/80">{email}</span>
+                  </span>
+                </button>
+                {isReviewer && (
+                  <Button asChild variant="ghost" size="sm" className="hidden text-[#1f2f66] xl:inline-flex">
+                    <Link href="/admin/support">{t('navSupport')}</Link>
+                  </Button>
+                )}
+              </>
+            ) : (
+              <>
+                <Button asChild variant="ghost" size="sm" className="text-[#1f2f66]">
+                  <Link href="/login">{t('navLogin')}</Link>
+                </Button>
+                <Button asChild size="sm" className="rounded-full bg-[#1f2f66] text-white hover:bg-[#18244f] hover:text-white">
+                  <Link href="/register">{t('navRegister')}</Link>
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+      <MobileNavDrawer
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        onOpenProfile={
+          isLoggedIn
+            ? () => {
+                setMobileMenuOpen(false);
+                setProfileOpen(true);
+              }
+            : undefined
+        }
+      />
       {profileDrawer}
       <div className="h-14 shrink-0 md:h-[80px]" aria-hidden />
     </>

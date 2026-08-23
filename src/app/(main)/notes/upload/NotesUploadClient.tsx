@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { CourseWithMaterial } from '@/components/materials/CourseMaterialCard';
+import type { CourseWithMaterial } from '@/lib/materials/types';
 import { CourseSelectRow } from '@/components/materials/CourseSelectRow';
 
 const SEMESTERS = ['Fall', 'Winter', 'Spring', 'Summer'] as const;

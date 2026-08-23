@@ -3,7 +3,7 @@ import {
   getMaterialCardState,
   getMaterialStateLabel,
 } from '@/lib/materials/course-card-styles';
-import type { CourseWithMaterial } from '@/components/materials/CourseMaterialCard';
+import type { CourseWithMaterial } from '@/lib/materials/types';
 import { cn } from '@/lib/utils';
 
 type CourseSelectRowProps = {

@@ -1,6 +1,5 @@
 import { unstable_cache } from 'next/cache';
 import { normalizeCourseCode } from '@/lib/grades/review-model';
-import { formatGradeRange } from '@/lib/notes/listing-utils';
 import { adminClient } from '@/lib/supabase/admin';
 
 type ListingRow = {
@@ -24,15 +23,6 @@ type ListingRow = {
 export type EnrichedListing = ListingRow & {
   grade: string;
   sellerLabel: string;
-};
-
-export type PublishedCourseSummary = {
-  courseCode: string;
-  courseTitle: string | null;
-  sellerCount: number;
-  listingCount: number;
-  latestListingAt: string;
-  gradeRangeLabel: string | null;
 };
 
 const LISTING_SELECT =
@@ -151,62 +141,6 @@ async function fetchPublishedCourseListingStats(): Promise<CourseListingStats[]>
   }));
 }
 
-async function fetchPublishedCourseSummaries(): Promise<PublishedCourseSummary[]> {
-  const stats = await fetchPublishedCourseListingStats();
-  if (stats.length === 0) {
-    return [];
-  }
-
-  const courseCodes = stats.map((row) => row.courseCode);
-
-  const [{ data: verifiedGrades }, { data: catalogCourses }] = await Promise.all([
-    adminClient
-      .from('verified_courses')
-      .select('course_code, grade')
-      .in('course_code', courseCodes),
-    adminClient.from('courses').select('course_code, course_title').in('course_code', courseCodes),
-  ]);
-
-  const titleByCode = new Map(
-    (catalogCourses || []).map((row) => [normalizeCourseCode(row.course_code), row.course_title as string])
-  );
-
-  const gradesByCourse = new Map<string, string[]>();
-  for (const row of verifiedGrades || []) {
-    const code = normalizeCourseCode(row.course_code);
-    if (!code) continue;
-    const grades = gradesByCourse.get(code) || [];
-    grades.push(row.grade as string);
-    gradesByCourse.set(code, grades);
-  }
-
-  return stats
-    .map((row) => ({
-      courseCode: row.courseCode,
-      courseTitle: titleByCode.get(row.courseCode) || null,
-      sellerCount: row.sellerCount,
-      listingCount: row.listingCount,
-      latestListingAt: row.latestListingAt,
-      gradeRangeLabel: formatGradeRange(gradesByCourse.get(row.courseCode) || []),
-    }))
-    .sort((a, b) => new Date(b.latestListingAt).getTime() - new Date(a.latestListingAt).getTime());
-}
-
-const getCachedPublishedCourseSummaries = unstable_cache(
-  fetchPublishedCourseSummaries,
-  ['published-course-summaries'],
-  { revalidate: MARKETPLACE_REVALIDATE_SECONDS, tags: ['marketplace'] }
-);
-
-export async function getPublishedCourseSummaries(): Promise<PublishedCourseSummary[]> {
-  return getCachedPublishedCourseSummaries();
-}
-
-export async function getFeaturedCourses(limit = 3): Promise<PublishedCourseSummary[]> {
-  const summaries = await getPublishedCourseSummaries();
-  return summaries.slice(0, limit);
-}
-
 async function fetchLatestPublishedListings(limit: number): Promise<EnrichedListing[]> {
   const { data, error } = await adminClient
     .from('note_listings')
@@ -224,12 +158,6 @@ async function fetchLatestPublishedListings(limit: number): Promise<EnrichedList
 
   return enrichListingsWithGrades((data || []) as ListingRow[]);
 }
-
-const getCachedLatestPublishedListings = unstable_cache(
-  async () => fetchLatestPublishedListings(8),
-  ['latest-published-listings'],
-  { revalidate: MARKETPLACE_REVALIDATE_SECONDS, tags: ['marketplace'] }
-);
 
 const getCachedHomepagePublishListings = unstable_cache(
   async () => fetchLatestPublishedListings(40),
@@ -282,13 +210,6 @@ const getCachedPublishedListingCountsByCourse = unstable_cache(
 
 export async function getPublishedListingCountsByCourse(): Promise<CourseListingCount[]> {
   return getCachedPublishedListingCountsByCourse();
-}
-
-export async function getLatestPublishedListings(limit = 8): Promise<EnrichedListing[]> {
-  if (limit === 8) {
-    return getCachedLatestPublishedListings();
-  }
-  return fetchLatestPublishedListings(limit);
 }
 
 export async function getHomepageMarketplaceData() {

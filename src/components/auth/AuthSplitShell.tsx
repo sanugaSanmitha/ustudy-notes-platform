@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { LoginLeavesAnimation } from '@/components/auth/LoginLeavesAnimation';
 import { LocaleToggle } from '@/components/i18n/LocaleToggle';
 
 export const authFieldClassName =
@@ -29,6 +28,10 @@ type AuthSplitShellProps = {
 };
 
 export function AuthSplitShell({ title, subtitle, children }: AuthSplitShellProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
   useEffect(() => {
     const html = document.documentElement;
     const { body } = document;
@@ -40,6 +43,29 @@ export function AuthSplitShell({ title, subtitle, children }: AuthSplitShellProp
     return () => {
       html.style.overflow = previousHtmlOverflow;
       body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const frame = frameRef.current;
+    if (!panel || !frame) return;
+
+    const update = () => {
+      const available = panel.clientHeight;
+      const needed = frame.scrollHeight;
+      if (!available || !needed) return;
+      setScale(Math.min(1, available / needed));
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(panel);
+    observer.observe(frame);
+    window.addEventListener('resize', update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
     };
   }, []);
 
@@ -60,52 +86,58 @@ export function AuthSplitShell({ title, subtitle, children }: AuthSplitShellProp
         </div>
       </div>
 
-      <div className="relative z-20 flex h-full w-full min-h-0 flex-col overflow-hidden bg-white md:w-1/2">
+      <div ref={panelRef} className="relative z-20 h-full w-full overflow-hidden bg-white md:w-1/2">
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-[-99px] z-0 size-[min(511px,90vw)] -translate-x-1/2"
+          className="pointer-events-none absolute left-1/2 top-[-99px] z-[1] size-[511px] -translate-x-1/2"
         >
           <img
             src="/images/auth/login-logo-mark.png"
             alt=""
             width={511}
             height={511}
-            className="size-full object-contain opacity-10"
+            className="size-full object-cover opacity-10"
           />
         </div>
 
-        <LocaleToggle className="absolute left-6 top-6 z-30 lg:left-10 lg:top-8" />
-        <Link
-          href="/"
-          aria-label="Close"
-          className="absolute right-6 top-6 z-30 size-[33px] overflow-clip lg:right-10 lg:top-8"
+        <div
+          ref={frameRef}
+          className="relative z-10 w-full origin-top"
+          style={{ transform: `scale(${scale})` }}
         >
-          <img
-            src="/icons/auth-close.png"
-            alt=""
-            width={33}
-            height={33}
-            className="size-full object-contain"
-          />
-        </Link>
+          <div className="absolute inset-x-0 top-0 z-30 flex items-center justify-between px-6 pt-5 md:px-12">
+            <LocaleToggle />
+            <Link
+              href="/"
+              aria-label="Close"
+              className="inline-flex size-[33px] shrink-0 items-center justify-center overflow-clip"
+            >
+              <img
+                src="/icons/auth-close.png"
+                alt=""
+                width={33}
+                height={33}
+                className="size-full object-contain"
+              />
+            </Link>
+          </div>
 
-        <div className="relative z-10 flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain px-6 py-8 lg:justify-center lg:px-12 lg:py-10">
-          <div className="mx-auto w-full max-w-[420px]">
-            <div className="mb-4 space-y-0.5">
-              <h1 className="text-[26px] font-semibold leading-8 tracking-[-0.32px] text-[#131b2e]">
-                {title}
-              </h1>
-              <p className="text-sm leading-5 text-[#505f76]">{subtitle}</p>
+          <div className="relative z-10 px-6 pb-8 pt-[152px] md:px-16">
+            <div className="relative z-10 mx-auto flex w-full max-w-[448px] flex-col">
+              <div className="mb-4 space-y-0.5">
+                <h1 className="text-[26px] font-semibold leading-8 tracking-[-0.32px] text-[#131b2e] md:text-[32px] md:leading-10">
+                  {title}
+                </h1>
+                <p className="text-sm leading-5 text-[#505f76] md:text-base md:leading-6">{subtitle}</p>
+              </div>
+              {children}
+              <p className="mt-4 text-center text-xs leading-4 text-[#505f76] md:text-sm md:leading-5">
+                © 2024 ustudy.dev. All rights reserved.
+              </p>
             </div>
-            {children}
-            <p className="mt-4 text-center text-xs leading-4 text-[#505f76]">
-              © 2024 ustudy.dev. All rights reserved.
-            </p>
           </div>
         </div>
       </div>
-
-      <LoginLeavesAnimation />
     </div>
   );
 }

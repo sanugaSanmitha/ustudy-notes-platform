@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { AuthIconField } from '@/components/auth/AuthIconField';
 import { AuthPasswordField } from '@/components/auth/AuthPasswordField';
@@ -35,7 +34,7 @@ function FieldError({ message }: { message: string }) {
   );
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useLocale();
@@ -44,7 +43,6 @@ export default function LoginPage() {
     email: '',
     password: '',
   });
-  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [errorType, setErrorType] = useState<'none' | 'verification' | 'credentials' | 'general'>(
     'none'
@@ -193,30 +191,18 @@ export default function LoginPage() {
               </Link>
             ) : null}
           </div>
-          <div className="flex justify-end">
-            <Link
-              href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}
-              className={cn(
-                'text-xs font-semibold tracking-[0.6px] hover:underline',
-                hasCredentialError || showResetPassword ? 'text-[#d93025]' : 'text-[#004ac6]'
-              )}
-            >
-              {showResetPassword ? t('authResetPassword') : t('authForgotPassword')}
-            </Link>
-          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="rememberMe"
-            checked={rememberMe}
-            onCheckedChange={(checked) => setRememberMe(checked === true)}
-            disabled={loading}
-            className="border-[#c3c6d7] bg-white"
-          />
-          <Label htmlFor="rememberMe" className="cursor-pointer text-sm font-normal text-[#505f76]">
-            {t('authRememberMe')}
-          </Label>
+        <div className="flex items-center justify-end">
+          <Link
+            href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}
+            className={cn(
+              'shrink-0 text-xs font-semibold tracking-[0.6px] hover:underline',
+              hasCredentialError || showResetPassword ? 'text-[#d93025]' : 'text-[#004ac6]'
+            )}
+          >
+            {showResetPassword ? t('authResetPassword') : t('authForgotPassword')}
+          </Link>
         </div>
 
         <Button type="submit" className={authPrimaryButtonClassName} disabled={loading}>
@@ -237,5 +223,27 @@ export default function LoginPage() {
         </Button>
       </div>
     </AuthSplitShell>
+  );
+}
+
+function LoginFallback() {
+  const { t } = useLocale();
+
+  return (
+    <AuthSplitShell title={t('authWelcomeTitle')} subtitle={t('authSignInSubtitle')}>
+      <div className="space-y-3">
+        <div className="h-10 animate-pulse rounded-md bg-[#edf0fc]" />
+        <div className="h-10 animate-pulse rounded-md bg-[#edf0fc]" />
+        <div className="h-10 animate-pulse rounded-md bg-[#213f73]/20" />
+      </div>
+    </AuthSplitShell>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }

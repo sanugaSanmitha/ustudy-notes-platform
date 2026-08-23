@@ -9,7 +9,13 @@ const OPTIONS: { locale: AppLocale; label: string }[] = [
   { locale: 'zh-CN', label: '中' },
 ];
 
-export function LocaleToggle({ className }: { className?: string }) {
+export function LocaleToggle({
+  className,
+  variant = 'standalone',
+}: {
+  className?: string;
+  variant?: 'standalone' | 'inset';
+}) {
   const { locale, setLocale, t, isEnglishOnly } = useLocale();
 
   if (isEnglishOnly) return null;
@@ -19,7 +25,10 @@ export function LocaleToggle({ className }: { className?: string }) {
       role="group"
       aria-label={t('language')}
       className={cn(
-        'inline-flex h-8 shrink-0 items-center rounded-full bg-[#e4eeff] p-0.5 shadow-[0px_2px_4px_0px_rgba(0,0,0,0.12)]',
+        'inline-flex shrink-0 items-center rounded-full p-0.5',
+        variant === 'standalone' &&
+          'h-8 bg-[#e4eeff] shadow-[0px_2px_4px_0px_rgba(0,0,0,0.12)]',
+        variant === 'inset' && 'h-7 bg-white/75',
         className
       )}
     >
