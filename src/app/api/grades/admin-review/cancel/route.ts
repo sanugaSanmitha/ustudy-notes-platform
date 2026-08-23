@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { STUDENT_CANCELLED_REVIEWER_NOTE } from '@/lib/grades/config';
 import { createReviewAction } from '@/lib/grades/review-pipeline';
 import { deleteTranscriptFile } from '@/lib/grades/transcript-storage';
 
@@ -87,14 +88,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const now = new Date().toISOString();
     const { error: updateError } = await adminClient
       .from('grade_verifications')
       .update({
+        status: 'rejected',
         confirmation_required: false,
+        reviewer_note: STUDENT_CANCELLED_REVIEWER_NOTE,
+        reviewed_at: now,
         transcript_storage_bucket: null,
         transcript_storage_path: null,
         transcript_storage_uploaded_at: null,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq('id', verification.id);
 

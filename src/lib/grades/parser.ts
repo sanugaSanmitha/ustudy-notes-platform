@@ -240,7 +240,44 @@ function extractJsonText(rawModelText: string): string {
   if (fenced?.[1]) {
     return fenced[1].trim();
   }
-  return rawModelText.trim();
+  const trimmed = rawModelText.trim();
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    return trimmed.slice(start, end + 1);
+  }
+  return trimmed;
+}
+
+function readGeminiResponseText(payload: Record<string, unknown>): string {
+  const parts =
+    (payload as { candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }> })
+      ?.candidates?.[0]?.content?.parts || [];
+  const texts = parts
+    .filter((part) => !part.thought && typeof part.text === 'string' && part.text.trim())
+    .map((part) => part.text as string);
+  if (texts.length > 0) {
+    return texts.join('\n');
+  }
+  return (payload as { candidates?: Array<{ output_text?: string }> })?.candidates?.[0]?.output_text || '';
+}
+
+async function extractPdfPlainText(buffer: Buffer): Promise<string> {
+  try {
+    const { PDFParse } = await import('pdf-parse');
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const result = await parser.getText();
+      return normalizeText(result.text || '');
+    } finally {
+      if (typeof parser.destroy === 'function') {
+        await parser.destroy();
+      }
+    }
+  } catch (error) {
+    console.error('PDF text extraction error:', error);
+    return '';
+  }
 }
 
 function normalizeName(name: string | null | undefined): string {
@@ -613,16 +650,18 @@ ${transcriptText.slice(0, maxTranscriptChars)}`;
 }
 
 function mapGeminiPayloadToParseResult(payload: Record<string, unknown>, transcriptText: string): TranscriptParseResult | null {
-  const modelText: string =
-    (payload as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; output_text?: string }> })?.candidates?.[0]
-      ?.content?.parts?.[0]?.text ||
-    (payload as { candidates?: Array<{ output_text?: string }> })?.candidates?.[0]?.output_text ||
-    '';
+  const modelText = readGeminiResponseText(payload);
   if (!modelText) {
     return null;
   }
 
-  const parsed = JSON.parse(extractJsonText(modelText)) as GeminiTranscriptJson;
+  let parsed: GeminiTranscriptJson;
+  try {
+    parsed = JSON.parse(extractJsonText(modelText)) as GeminiTranscriptJson;
+  } catch (error) {
+    console.error('Gemini JSON parse error:', error);
+    return null;
+  }
   const semesters = Array.isArray(parsed.semesters) ? parsed.semesters : [];
 
   const courses: ParsedGradeCourse[] = semesters.flatMap((semester) => {
@@ -766,28 +805,47 @@ async function extractTranscriptWithGemini(transcriptText: string, buffer?: Buff
   };
 
   if (buffer) {
-    const pdfResponse = await requestGemini([
+    const pdfBase64 = buffer.toString('base64');
+    const pdfParts = [
       {
-        parts: [
-          { text: pdfPrompt },
-          {
-            inline_data: {
-              mime_type: 'application/pdf',
-              data: buffer.toString('base64'),
-            },
-          },
-        ],
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: pdfBase64,
+        },
       },
-    ]);
+      { text: pdfPrompt },
+    ];
+    const pdfResponse = await requestGemini([{ parts: pdfParts }]);
 
     if (pdfResponse.ok) {
-      const payload = pdfResponse.payload;
-      const mapped = mapGeminiPayloadToParseResult(payload, transcriptText);
+      const mapped = mapGeminiPayloadToParseResult(pdfResponse.payload, transcriptText);
       if (mapped) {
         return mapped;
       }
+      console.error('Gemini PDF response had no usable transcript JSON.');
     } else {
       console.error('Gemini PDF parse request failed:', pdfResponse.status, pdfResponse.body);
+      const legacyPdfResponse = await requestGemini([
+        {
+          parts: [
+            { text: pdfPrompt },
+            {
+              inline_data: {
+                mime_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+          ],
+        },
+      ]);
+      if (legacyPdfResponse.ok) {
+        const mapped = mapGeminiPayloadToParseResult(legacyPdfResponse.payload, transcriptText);
+        if (mapped) {
+          return mapped;
+        }
+      } else {
+        console.error('Gemini PDF legacy parse request failed:', legacyPdfResponse.status, legacyPdfResponse.body);
+      }
     }
   }
 
@@ -1026,7 +1084,7 @@ export async function extractAndValidateTranscriptBuffer(
   buffer: Buffer,
   context: TranscriptVerificationContext
 ): Promise<TranscriptPipelineResult> {
-  const transcriptText = normalizeText(buffer.toString('latin1'));
+  const transcriptText = await extractPdfPlainText(buffer);
   const metadata: TranscriptPdfMetadata = {
     producer: null,
     creator: null,
@@ -1040,19 +1098,17 @@ export async function extractAndValidateTranscriptBuffer(
   const normalizedText = transcriptText;
   let parseResult: TranscriptParseResult | null = null;
 
-  if (normalizedText) {
-    try {
-      parseResult = await extractTranscriptWithGemini(normalizedText, buffer);
-    } catch (error) {
-      console.error('Gemini transcript parse error:', error);
-    }
+  try {
+    parseResult = await extractTranscriptWithGemini(normalizedText, buffer);
+  } catch (error) {
+    console.error('Gemini transcript parse error:', error);
   }
 
   if (!parseResult) {
-    parseResult = buildRegexFallback(normalizedText || normalizeText(buffer.toString('latin1')));
+    parseResult = buildRegexFallback(normalizedText);
   }
   if (parseResult.courses.length === 0) {
-    const fallback = buildRegexFallback(normalizedText || normalizeText(buffer.toString('latin1')));
+    const fallback = buildRegexFallback(normalizedText);
     if (fallback.courses.length > 0) {
       parseResult = {
         ...parseResult,

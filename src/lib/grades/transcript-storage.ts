@@ -104,6 +104,7 @@ export async function createTranscriptSignedUrl(
       new GetObjectCommand({
         Bucket: bucket,
         Key: path,
+        ResponseContentDisposition: `attachment; filename="${path.split('/').pop() || 'notes.zip'}"`,
       }),
       { expiresIn: expiresSeconds }
     );

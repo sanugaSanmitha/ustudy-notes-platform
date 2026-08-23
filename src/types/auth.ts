@@ -8,6 +8,7 @@ export interface AuthUser {
   anonymousId: string;
   isSeller: boolean;
   isFirstPurchase: boolean;
+  avatarUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }

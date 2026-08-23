@@ -1,6 +1,6 @@
-
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { readAuthIdentity } from '@/lib/auth/identity';
 import {
   isAuthorizedAdmin,
   isAuthorizedAssistant,
@@ -9,14 +9,21 @@ import {
   resolvePortalLandingPath,
   type AppRole,
 } from '@/lib/auth/admin-access';
+import {
+  AVATAR_COOKIE,
+  DISPLAY_NAME_COOKIE,
+  PROFILE_COMPLETE_COOKIE,
+  SELLER_COOKIE,
+  encodeNavCookieValue,
+  hasAuthSessionCookies,
+  navCookieOptions,
+} from '@/lib/auth/nav-cookies';
 
 const PROTECTED_PATHS = [
   '/complete-profile',
   '/profile',
   '/cart',
   '/checkout',
-  '/orders',
-  '/wallet',
   '/grades',
   '/notes/upload',
   '/admin',
@@ -26,7 +33,7 @@ const PROTECTED_PATHS = [
 const AUTH_PATHS = ['/register', '/login', '/verify-email'];
 
 function hasSupabaseSessionCookie(request: NextRequest) {
-  return request.cookies.getAll().some((cookie) => cookie.name.includes('-auth-token'));
+  return hasAuthSessionCookies(request.cookies.getAll());
 }
 
 function isAdminUser(email: string | null | undefined, roles: AppRole[]) {
@@ -39,6 +46,25 @@ function isAssistantUser(email: string | null | undefined, roles: AppRole[]) {
 
 function isSupportUser(email: string | null | undefined, roles: AppRole[]) {
   return isAuthorizedSupport(email, roles);
+}
+
+function applyProfileNavCookies(
+  response: NextResponse,
+  profile: { profile_completed?: boolean | null; full_name?: string | null; school?: string | null; is_seller?: boolean | null; avatar_url?: string | null }
+) {
+  const isProfileCompleted = Boolean(
+    profile.profile_completed && profile.full_name?.trim() && profile.school?.trim()
+  );
+  const isSeller = Boolean(profile.is_seller);
+  const displayName = profile.full_name?.trim() || '';
+  const avatarUrl = profile.avatar_url || '';
+
+  response.cookies.set(PROFILE_COMPLETE_COOKIE, isProfileCompleted ? '1' : '0', navCookieOptions());
+  response.cookies.set(SELLER_COOKIE, isSeller ? '1' : '0', navCookieOptions());
+  response.cookies.set(DISPLAY_NAME_COOKIE, encodeNavCookieValue(displayName), navCookieOptions());
+  response.cookies.set(AVATAR_COOKIE, encodeNavCookieValue(avatarUrl), navCookieOptions());
+
+  return { isProfileCompleted, isSeller };
 }
 
 async function getUserRoles(
@@ -73,13 +99,18 @@ export async function middleware(request: NextRequest) {
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
   const isHomePath = pathname === '/';
+  const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
+  const isSupportPath = pathname === '/support' || pathname.startsWith('/support/');
+  const isNotesUploadPath = pathname === '/notes/upload' || pathname.startsWith('/notes/upload/');
 
-  // Public homepage for guests — skip auth round-trip entirely.
+  if (pathname === '/materials' || pathname.startsWith('/materials/')) {
+    return NextResponse.redirect(new URL('/notes/upload', request.url));
+  }
+
   if (isHomePath && !hasSupabaseSessionCookie(request)) {
     return NextResponse.next();
   }
 
-  // Skip Supabase/session work for routes that do not need auth enforcement.
   if (!isProtectedPath && !isAuthPath && !isCompleteProfilePath && !isHomePath) {
     return NextResponse.next();
   }
@@ -87,6 +118,14 @@ export async function middleware(request: NextRequest) {
   const supabaseResponse = NextResponse.next({
     request,
   });
+
+  const redirectWithCookies = (url: URL) => {
+    const response = NextResponse.redirect(url);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      response.cookies.set(cookie.name, cookie.value);
+    });
+    return response;
+  };
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -105,49 +144,70 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const identity = await readAuthIdentity(supabase);
+  const user = identity
+    ? { id: identity.id, email: identity.email, email_confirmed_at: identity.emailConfirmed ? 'confirmed' : null }
+    : null;
 
   if (isProtectedPath && !user) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('next', pathname);
-    return NextResponse.redirect(loginUrl);
+    return redirectWithCookies(loginUrl);
   }
 
-  const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
-  const isSupportPath = pathname === '/support' || pathname.startsWith('/support/');
-
-  let isProfileCompleted = false;
-  let isSeller = false;
+  let isProfileCompleted = request.cookies.get(PROFILE_COMPLETE_COOKIE)?.value === '1';
+  let isSeller = request.cookies.get(SELLER_COOKIE)?.value === '1';
   let userRoles: AppRole[] = [];
 
   if (user) {
-    userRoles = await getUserRoles(supabase, user.id);
+    const emailLooksStaff = isAuthorizedVerificationReviewer(user.email, []);
+    const needsRoleCheck =
+      isAdminPath || isSupportPath || isAuthPath || isCompleteProfilePath || (isHomePath && emailLooksStaff);
+    const needsFreshProfile =
+      !isProfileCompleted ||
+      isCompleteProfilePath ||
+      isNotesUploadPath ||
+      isAuthPath ||
+      request.cookies.get(DISPLAY_NAME_COOKIE) === undefined;
 
-    const { data: profile } = await supabase
-      .from('users')
-      .select('profile_completed, full_name, school, is_seller')
-      .eq('id', user.id)
-      .maybeSingle();
+    if (needsFreshProfile || needsRoleCheck) {
+      const [roles, profileResult] = await Promise.all([
+        needsRoleCheck ? getUserRoles(supabase, user.id) : Promise.resolve([] as AppRole[]),
+        needsFreshProfile
+          ? (async () => {
+              const withAvatar = await supabase
+                .from('users')
+                .select('profile_completed, full_name, school, is_seller, avatar_url')
+                .eq('id', user.id)
+                .maybeSingle();
 
-    isProfileCompleted = Boolean(
-      profile?.profile_completed &&
-      profile?.full_name?.trim() &&
-      profile?.school?.trim()
-    );
-    isSeller = Boolean(profile?.is_seller);
+              if (withAvatar.error?.message?.includes('avatar_url')) {
+                return supabase
+                  .from('users')
+                  .select('profile_completed, full_name, school, is_seller')
+                  .eq('id', user.id)
+                  .maybeSingle();
+              }
+
+              return withAvatar;
+            })()
+          : Promise.resolve({ data: null }),
+      ]);
+
+      userRoles = roles;
+
+      if (profileResult.data) {
+        const nextProfile = applyProfileNavCookies(supabaseResponse, profileResult.data);
+        isProfileCompleted = nextProfile.isProfileCompleted;
+        isSeller = nextProfile.isSeller;
+      }
+    }
   }
 
-  const isNotesUploadPath = pathname === '/notes/upload' || pathname.startsWith('/notes/upload/');
-  const isMaterialsPath = pathname === '/materials' || pathname.startsWith('/materials/');
-  if (isMaterialsPath) {
-    return NextResponse.redirect(new URL('/notes/upload', request.url));
-  }
   if (isNotesUploadPath && user && !isSeller) {
     const verifyUrl = new URL('/grades/upload', request.url);
     verifyUrl.searchParams.set('reason', 'seller_required');
-    return NextResponse.redirect(verifyUrl);
+    return redirectWithCookies(verifyUrl);
   }
 
   if (isAdminPath && user) {
@@ -160,27 +220,27 @@ export async function middleware(request: NextRequest) {
 
     if (isAdminSupportPath) {
       if (!isAuthorizedAdminUser && !isAuthorizedSupportUser) {
-        return NextResponse.redirect(new URL('/', request.url));
+        return redirectWithCookies(new URL('/', request.url));
       }
     } else if (isAdminGradesPath) {
       if (!isAuthorizedVerificationReviewer(user.email, userRoles)) {
-        return NextResponse.redirect(new URL('/', request.url));
+        return redirectWithCookies(new URL('/', request.url));
       }
     } else if (isAdminDashboardPath && !isAuthorizedAdminUser && (isAuthorizedAssistantUser || isAuthorizedSupportUser)) {
-      return NextResponse.redirect(new URL('/admin/grades', request.url));
+      return redirectWithCookies(new URL('/admin/grades', request.url));
     } else if (!isAuthorizedAdminUser) {
-      return NextResponse.redirect(new URL('/', request.url));
+      return redirectWithCookies(new URL('/', request.url));
     }
   }
 
   if (isSupportPath && user) {
     if (!isSupportUser(user.email, userRoles)) {
-      return NextResponse.redirect(new URL('/', request.url));
+      return redirectWithCookies(new URL('/', request.url));
     }
   }
 
   if (user && !isProfileCompleted && !isAuthPath && !isCompleteProfilePath && !pathname.startsWith('/api/')) {
-    return NextResponse.redirect(new URL('/complete-profile', request.url));
+    return redirectWithCookies(new URL('/complete-profile', request.url));
   }
 
   if (isCompleteProfilePath && user && isProfileCompleted) {
@@ -189,7 +249,7 @@ export async function middleware(request: NextRequest) {
       email: user.email,
       roles: userRoles,
     });
-    return NextResponse.redirect(new URL(landing, request.url));
+    return redirectWithCookies(new URL(landing, request.url));
   }
 
   if (isHomePath && user && isProfileCompleted) {
@@ -199,13 +259,13 @@ export async function middleware(request: NextRequest) {
       roles: userRoles,
     });
     if (landing !== '/') {
-      return NextResponse.redirect(new URL(landing, request.url));
+      return redirectWithCookies(new URL(landing, request.url));
     }
   }
 
   if (isAuthPath && user) {
     const isVerifyEmailPage = pathname === '/verify-email' || pathname.startsWith('/verify-email/');
-    const emailConfirmed = Boolean(user.email_confirmed_at);
+    const emailConfirmed = identity?.emailConfirmed;
 
     if (isVerifyEmailPage && !emailConfirmed) {
       return supabaseResponse;
@@ -216,7 +276,7 @@ export async function middleware(request: NextRequest) {
       email: user.email,
       roles: userRoles,
     });
-    return NextResponse.redirect(new URL(destination, request.url));
+    return redirectWithCookies(new URL(destination, request.url));
   }
 
   return supabaseResponse;
@@ -229,8 +289,6 @@ export const config = {
     '/profile/:path*',
     '/cart/:path*',
     '/checkout/:path*',
-    '/orders/:path*',
-    '/wallet/:path*',
     '/grades/:path*',
     '/notes/upload/:path*',
     '/materials',

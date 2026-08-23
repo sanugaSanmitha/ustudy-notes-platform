@@ -56,13 +56,6 @@ type ReviewStats = {
   rejectedToday: number;
 };
 
-type StaffMember = {
-  id: string;
-  full_name: string | null;
-  email: string;
-  roles: string[];
-};
-
 type Pagination = {
   page: number;
   pageSize: number;
@@ -104,7 +97,7 @@ function formatWaitingTime(createdAt: string) {
 export default function AdminGradeReviewsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAdmin, isAssistant, isSupport, userId } = useAdminPortalRole();
+  const { isAdmin, isAssistant, isSupport, userId, staff } = useAdminPortalRole();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -112,7 +105,6 @@ export default function AdminGradeReviewsPage() {
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [searchInput, setSearchInput] = useState(searchParams.get('search') || '');
-  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
 
@@ -134,6 +126,21 @@ export default function AdminGradeReviewsPage() {
     },
     [router, searchParams]
   );
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/grades/stats', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      const result = await response.json().catch(() => null);
+      if (response.ok) {
+        setStats(result?.data?.stats || null);
+      }
+    } catch (statsError) {
+      console.error('Admin review stats fetch error:', statsError);
+    }
+  }, []);
 
   const fetchRequests = useCallback(
     async (isRefresh = false) => {
@@ -163,7 +170,6 @@ export default function AdminGradeReviewsPage() {
           return;
         }
         setRequests(result?.data?.requests || []);
-        setStats(result?.data?.stats || null);
         setPagination(result?.data?.pagination || null);
       } catch (requestError) {
         console.error('Admin review list fetch error:', requestError);
@@ -176,11 +182,26 @@ export default function AdminGradeReviewsPage() {
     [statusFilter, riskFilter, priorityFilter, dateFrom, dateTo, page, searchParams]
   );
 
+  const refreshAll = useCallback(
+    async (isRefresh = false) => {
+      await Promise.all([fetchRequests(isRefresh), fetchStats()]);
+    },
+    [fetchRequests, fetchStats]
+  );
+
   useEffect(() => {
-    fetchRequests();
+    void fetchStats();
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchRequests(true);
-    }, 30_000);
+      if (document.visibilityState === 'visible') void fetchStats();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchStats]);
+
+  useEffect(() => {
+    void fetchRequests();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') void fetchRequests(true);
+    }, 60_000);
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
@@ -193,14 +214,6 @@ export default function AdminGradeReviewsPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput, searchParams, updateParams]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    fetch('/api/admin/staff/assistants', { cache: 'no-store', credentials: 'same-origin' })
-      .then((response) => response.json())
-      .then((result) => setStaff(result?.data?.staff || result?.data?.assistants || []))
-      .catch(() => null);
-  }, [isAdmin]);
 
   const handleClaim = async (requestId: string) => {
     setClaimingId(requestId);
@@ -215,6 +228,7 @@ export default function AdminGradeReviewsPage() {
       if (result?.data?.claimed === false && result?.data?.reviewerName) {
         setError(`Already claimed by ${result.data.reviewerName}.`);
         fetchRequests(true);
+        fetchStats();
         return;
       }
       router.push(`/admin/grades/${requestId}`);
@@ -279,10 +293,10 @@ export default function AdminGradeReviewsPage() {
 
   return (
     <AdminShell
-      title="Verification Queue"
+      title="Transcript Verification Queue"
       description="Review escalated transcript verification requests."
       actions={
-        <Button type="button" variant="outline" size="sm" onClick={() => fetchRequests(true)} disabled={refreshing}>
+        <Button type="button" variant="outline" size="sm" onClick={() => void refreshAll(true)} disabled={refreshing}>
           <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
@@ -301,10 +315,10 @@ export default function AdminGradeReviewsPage() {
         </div>
       )}
 
-      <Card className="sticky top-16 z-30 mb-4 bg-white p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-          <div className="relative min-w-[240px] flex-1">
-            <label htmlFor="queue-search" className="mb-1 block text-xs font-medium text-slate-600">
+      <Card className="sticky top-16 z-30 mb-4 bg-white p-3 sm:p-4">
+        <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-[minmax(0,2fr)_repeat(5,minmax(0,1fr))]">
+          <div className="relative sm:col-span-2 md:col-span-3 lg:col-span-1">
+            <label htmlFor="queue-search" className="mb-0.5 block text-xs font-medium text-slate-600">
               Search
             </label>
             <div className="relative">
@@ -314,19 +328,19 @@ export default function AdminGradeReviewsPage() {
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Search student name or email…"
-                className="pl-9"
+                className="h-9 w-full pl-9"
               />
             </div>
           </div>
-          <div>
-            <label htmlFor="status-filter" className="mb-1 block text-xs font-medium text-slate-600">
+          <div className="min-w-0">
+            <label htmlFor="status-filter" className="mb-0.5 block text-xs font-medium text-slate-600">
               Status
             </label>
             <select
               id="status-filter"
               value={statusFilter}
               onChange={(e) => updateParams({ status: e.target.value, page: '1' })}
-              className="h-9 min-w-[11rem] rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-9 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm"
             >
               {STATUS_FILTERS.map((filter) => (
                 <option key={filter.value} value={filter.value}>
@@ -335,15 +349,15 @@ export default function AdminGradeReviewsPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="risk-filter" className="mb-1 block text-xs font-medium text-slate-600">
+          <div className="min-w-0">
+            <label htmlFor="risk-filter" className="mb-0.5 block text-xs font-medium text-slate-600">
               Risk
             </label>
             <select
               id="risk-filter"
               value={riskFilter}
               onChange={(e) => updateParams({ risk: e.target.value === 'all' ? null : e.target.value, page: '1' })}
-              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-9 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm"
             >
               {RISK_FILTERS.map((filter) => (
                 <option key={filter.value} value={filter.value}>
@@ -352,15 +366,15 @@ export default function AdminGradeReviewsPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="priority-filter" className="mb-1 block text-xs font-medium text-slate-600">
+          <div className="min-w-0">
+            <label htmlFor="priority-filter" className="mb-0.5 block text-xs font-medium text-slate-600">
               Priority
             </label>
             <select
               id="priority-filter"
               value={priorityFilter}
               onChange={(e) => updateParams({ priority: e.target.value === 'all' ? null : e.target.value, page: '1' })}
-              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              className="h-9 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm"
             >
               {PRIORITY_FILTERS.map((filter) => (
                 <option key={filter.value} value={filter.value}>
@@ -369,8 +383,8 @@ export default function AdminGradeReviewsPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="date-from" className="mb-1 block text-xs font-medium text-slate-600">
+          <div className="min-w-0">
+            <label htmlFor="date-from" className="mb-0.5 block text-xs font-medium text-slate-600">
               From
             </label>
             <Input
@@ -378,11 +392,11 @@ export default function AdminGradeReviewsPage() {
               type="date"
               value={dateFrom}
               onChange={(e) => updateParams({ dateFrom: e.target.value || null, page: '1' })}
-              className="h-9 w-36"
+              className="h-9 w-full min-w-0"
             />
           </div>
-          <div>
-            <label htmlFor="date-to" className="mb-1 block text-xs font-medium text-slate-600">
+          <div className="min-w-0">
+            <label htmlFor="date-to" className="mb-0.5 block text-xs font-medium text-slate-600">
               To
             </label>
             <Input
@@ -390,7 +404,7 @@ export default function AdminGradeReviewsPage() {
               type="date"
               value={dateTo}
               onChange={(e) => updateParams({ dateTo: e.target.value || null, page: '1' })}
-              className="h-9 w-36"
+              className="h-9 w-full min-w-0"
             />
           </div>
         </div>

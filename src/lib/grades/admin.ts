@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { cache } from 'react';
 import { adminClient } from '@/lib/supabase/admin';
 import {
   isAuthorizedAdmin,
@@ -7,11 +7,17 @@ import {
   isAuthorizedVerificationReviewer,
   type AppRole,
 } from '@/lib/auth/admin-access';
+import { getAuthIdentity } from '@/lib/auth/session';
 import { getAssistantPortalEmails, isAdminPortalEmail } from '@/lib/auth/staff-emails';
 
 export { isAdminPortalEmail as isAdminEmail };
 
-async function resolveUserRoles(userId: string): Promise<AppRole[]> {
+type StaffAuthUser = {
+  id: string;
+  email: string | null;
+};
+
+export const resolveUserRoles = cache(async (userId: string): Promise<AppRole[]> => {
   const { data, error } = await adminClient
     .from('user_roles')
     .select('role')
@@ -27,16 +33,20 @@ async function resolveUserRoles(userId: string): Promise<AppRole[]> {
     .filter((role): role is AppRole =>
       role === 'user' || role === 'support' || role === 'admin' || role === 'assistant'
     );
-}
+});
+
+const getStaffAuthUser = cache(async (): Promise<StaffAuthUser | null> => {
+  const identity = await getAuthIdentity();
+  if (!identity) {
+    return null;
+  }
+
+  return { id: identity.id, email: identity.email };
+});
 
 export async function requireAdminUser() {
-  const supabase = createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
+  const user = await getStaffAuthUser();
+  if (!user) {
     return { ok: false as const, status: 401, message: 'Not authenticated', user: null };
   }
 
@@ -49,13 +59,8 @@ export async function requireAdminUser() {
 }
 
 export async function requireVerificationReviewer() {
-  const supabase = createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
+  const user = await getStaffAuthUser();
+  if (!user) {
     return { ok: false as const, status: 401, message: 'Not authenticated', user: null };
   }
 
@@ -72,29 +77,26 @@ export async function requireVerificationReviewer() {
 }
 
 export async function requireReviewerUser() {
-  const adminAuth = await requireAdminUser();
-  if (adminAuth.ok) {
-    return adminAuth;
-  }
-
-  const verificationAuth = await requireVerificationReviewer();
-  if (verificationAuth.ok) {
-    return verificationAuth;
-  }
-
-  const supabase = createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
+  const user = await getStaffAuthUser();
+  if (!user) {
     return { ok: false as const, status: 401, message: 'Not authenticated', user: null };
   }
 
   const roles = await resolveUserRoles(user.id);
-  if (!isAuthorizedSupport(user.email, roles)) {
+  const isAdmin = isAuthorizedAdmin(user.email, roles);
+  const isAssistant = !isAdmin && isAuthorizedAssistant(user.email, roles);
+  const isSupport = isAuthorizedSupport(user.email, roles);
+
+  if (!isAdmin && !isAuthorizedVerificationReviewer(user.email, roles) && !isSupport) {
     return { ok: false as const, status: 403, message: 'Support or admin access required', user };
+  }
+
+  if (isAdmin) {
+    return { ok: true as const, user, roles, isAdmin: true as const, isAssistant: false as const };
+  }
+
+  if (isAuthorizedVerificationReviewer(user.email, roles)) {
+    return { ok: true as const, user, roles, isAdmin, isAssistant, isSupport };
   }
 
   return {

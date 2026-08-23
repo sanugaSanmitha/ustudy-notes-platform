@@ -6,11 +6,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { PasswordInput } from '@/components/ui/password-input';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { createClient } from '@/lib/supabase/client';
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useLocale();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [recoveryChecking, setRecoveryChecking] = useState(true);
@@ -104,17 +106,17 @@ export default function UpdatePasswordPage() {
     setSuccess('');
 
     if (!newPassword || !confirmPassword) {
-      setError('Please fill in both password fields.');
+      setError(t('authFillBothPasswordFields'));
       return;
     }
 
     if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError(t('authPasswordMin8'));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(t('authPasswordsDoNotMatch'));
       return;
     }
 
@@ -127,12 +129,12 @@ export default function UpdatePasswordPage() {
       });
 
       if (updateError) {
-        setError(updateError.message || 'Unable to update password. Please request a new reset link.');
+        setError(updateError.message || t('authUpdatePasswordFailed'));
         setLoading(false);
         return;
       }
 
-      setSuccess('Password updated successfully. Redirecting to login...');
+      setSuccess(t('authPasswordUpdatedSuccess'));
 
       await supabase.auth.signOut();
 
@@ -142,7 +144,7 @@ export default function UpdatePasswordPage() {
       }, 1200);
     } catch (err) {
       console.error('Update password error:', err);
-      setError('Unable to update password. Please request a new reset link.');
+      setError(t('authUpdatePasswordFailed'));
     } finally {
       setLoading(false);
     }
@@ -152,8 +154,8 @@ export default function UpdatePasswordPage() {
     <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Set New Password</h1>
-          <p className="text-slate-500">Choose a new password for your account</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('authSetNewPasswordTitle')}</h1>
+          <p className="text-slate-500">{t('authSetNewPasswordSubtitle')}</p>
         </div>
 
         {error && (
@@ -169,28 +171,26 @@ export default function UpdatePasswordPage() {
         )}
 
         {recoveryChecking ? (
-          <p className="text-center text-sm text-slate-600">Validating reset link...</p>
+          <p className="text-center text-sm text-slate-600">{t('authValidatingResetLink')}</p>
         ) : !hasRecoverySession ? (
           <div className="space-y-4">
-            <p className="text-center text-sm text-slate-600">
-              Reset links expire after 60 minutes. Request a new link to continue.
-            </p>
+            <p className="text-center text-sm text-slate-600">{t('authResetLinkExpired')}</p>
             <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-              <Link href="/forgot-password">Request New Reset Link</Link>
+              <Link href="/forgot-password">{t('authRequestNewResetLink')}</Link>
             </Button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label htmlFor="newPassword" className="block text-sm font-medium text-slate-700 mb-1">
-              New Password
+              {t('newPassword')}
             </Label>
             <PasswordInput
               id="newPassword"
               name="newPassword"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder={t('authNewPasswordPlaceholder')}
               className="w-full"
               disabled={loading}
             />
@@ -198,32 +198,30 @@ export default function UpdatePasswordPage() {
 
           <div>
             <Label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-1">
-              Confirm New Password
+              {t('confirmPassword')}
             </Label>
             <PasswordInput
               id="confirmPassword"
               name="confirmPassword"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Re-enter new password"
+              placeholder={t('authConfirmPasswordPlaceholder')}
               className="w-full"
               disabled={loading}
             />
           </div>
 
           <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={loading}>
-            {loading ? 'Updating password...' : 'Update Password'}
+            {loading ? t('updatingPassword') : t('updatePasswordButton')}
           </Button>
-          <p className="text-xs text-slate-500">
-            This reset link expires 60 minutes after it is issued.
-          </p>
+          <p className="text-xs text-slate-500">{t('authResetLinkExpiryNote')}</p>
           </form>
         )}
 
         <p className="text-center text-slate-600 text-sm mt-6">
-          Back to{' '}
+          {t('authBackToLoginPrefix')}{' '}
           <Link href="/login" className="text-blue-600 hover:underline font-medium">
-            Login
+            {t('authLogin')}
           </Link>
         </p>
       </div>

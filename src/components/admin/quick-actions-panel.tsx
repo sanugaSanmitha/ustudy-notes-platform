@@ -26,7 +26,7 @@ export function QuickActionsPanel({ onRefresh, refreshing }: QuickActionsPanelPr
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Link href="/admin/grades" className={actionLinkClass}>
           <FileText className="mr-2 h-4 w-4" />
-          Verification Queue
+          Transcript Verification Queue
         </Link>
         <Link href="/admin/support" className={actionLinkClass}>
           <ClipboardList className="mr-2 h-4 w-4" />

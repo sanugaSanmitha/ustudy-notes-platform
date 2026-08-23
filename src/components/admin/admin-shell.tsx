@@ -1,22 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, FileArchive, FileText, LayoutDashboard, LogOut, NotebookPen, ScrollText, Users, BarChart3 } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useMemo } from 'react';
+import { Banknote, BarChart3, ChevronDown, ClipboardList, FileArchive, FileText, LayoutDashboard, LogOut, NotebookPen, ScrollText, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
-
-type PortalRole = 'admin' | 'assistant' | 'support';
+import { useAdminPortalRole, type PortalRole } from '@/components/admin/admin-portal-context';
 
 const ALL_NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, roles: ['admin'] as PortalRole[] },
   { href: '/admin/summary', label: 'Summary', icon: BarChart3, roles: ['admin'] as PortalRole[] },
   { href: '/admin/users', label: 'Users', icon: Users, roles: ['admin'] as PortalRole[] },
   { href: '/admin/materials', label: 'Materials', icon: FileArchive, roles: ['admin'] as PortalRole[] },
-  { href: '/admin/notes', label: 'Note Listings', icon: NotebookPen, roles: ['admin'] as PortalRole[] },
-  { href: '/admin/grades', label: 'Verification Queue', icon: FileText, roles: ['admin', 'assistant', 'support'] as PortalRole[] },
+  { href: '/admin/payments', label: 'FPS Payments', icon: Banknote, roles: ['admin'] as PortalRole[] },
+  { href: '/admin/notes', label: 'Note Verify', icon: NotebookPen, roles: ['admin'] as PortalRole[] },
+  { href: '/admin/grades', label: 'Transcript Verify', icon: FileText, roles: ['admin', 'assistant', 'support'] as PortalRole[] },
   { href: '/admin/audit', label: 'Audit Log', icon: ScrollText, roles: ['admin'] as PortalRole[] },
   { href: '/admin/support', label: 'Support Queue', icon: ClipboardList, roles: ['admin', 'support'] as PortalRole[] },
 ];
@@ -28,27 +28,23 @@ type AdminShellProps = {
   children: React.ReactNode;
 };
 
+function isNavItemActive(pathname: string, href: string, exact?: boolean) {
+  return exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function AdminShell({ title, description, actions, children }: AdminShellProps) {
   const pathname = usePathname();
-  const [portalRole, setPortalRole] = useState<PortalRole | null>(null);
-  const [roleLoading, setRoleLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/admin/me', { cache: 'no-store', credentials: 'same-origin' })
-      .then((response) => response.json())
-      .then((result) => {
-        const role = result?.data?.portalRole;
-        if (role === 'admin' || role === 'assistant' || role === 'support') {
-          setPortalRole(role);
-        }
-      })
-      .catch(() => null)
-      .finally(() => setRoleLoading(false));
-  }, []);
+  const router = useRouter();
+  const { portalRole, loading: roleLoading } = useAdminPortalRole();
 
   const navItems = useMemo(
     () => (portalRole ? ALL_NAV_ITEMS.filter((item) => item.roles.includes(portalRole)) : []),
     [portalRole]
+  );
+
+  const activeHref = useMemo(
+    () => navItems.find(({ href, exact }) => isNavItemActive(pathname, href, exact))?.href ?? navItems[0]?.href ?? '',
+    [navItems, pathname]
   );
 
   const portalTitle =
@@ -83,6 +79,33 @@ export function AdminShell({ title, description, actions, children }: AdminShell
         </div>
       </header>
 
+      <div className="border-b border-slate-200 bg-white lg:hidden">
+        <div className="mx-auto max-w-[1440px] px-4">
+          {roleLoading ? (
+            <div className="my-3 h-10 animate-pulse rounded-md bg-slate-100" />
+          ) : navItems.length > 0 ? (
+            <div className="relative py-3">
+              <label htmlFor="admin-mobile-nav" className="sr-only">
+                Navigate to
+              </label>
+              <select
+                id="admin-mobile-nav"
+                value={activeHref}
+                onChange={(event) => router.push(event.target.value)}
+                className="w-full appearance-none rounded-md border border-slate-200 bg-white px-3 py-2.5 pr-10 text-sm font-medium text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              >
+                {navItems.map(({ href, label }) => (
+                  <option key={href} value={href}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       <div className="mx-auto flex max-w-[1440px]">
         <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white lg:block">
           <nav className="space-y-1 p-4">
@@ -93,7 +116,7 @@ export function AdminShell({ title, description, actions, children }: AdminShell
               </div>
             ) : null}
             {navItems.map(({ href, label, icon: Icon, exact }) => {
-              const active = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+              const active = isNavItemActive(pathname, href, exact);
               return (
                 <Link
                   key={href}
@@ -126,30 +149,4 @@ export function AdminShell({ title, description, actions, children }: AdminShell
   );
 }
 
-export function useAdminPortalRole() {
-  const [portalRole, setPortalRole] = useState<PortalRole | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/admin/me', { cache: 'no-store', credentials: 'same-origin' })
-      .then((response) => response.json())
-      .then((result) => {
-        const role = result?.data?.portalRole;
-        if (role === 'admin' || role === 'assistant' || role === 'support') {
-          setPortalRole(role);
-        }
-        setUserId(result?.data?.userId || null);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  return {
-    portalRole,
-    userId,
-    loading,
-    isAdmin: portalRole === 'admin',
-    isAssistant: portalRole === 'assistant',
-    isSupport: portalRole === 'support',
-  };
-}
+export { useAdminPortalRole } from '@/components/admin/admin-portal-context';

@@ -195,18 +195,23 @@ export async function POST(request: NextRequest) {
 
     const isGradeUpdate = Boolean(userProfile.is_seller || existingApproved);
 
-    const { data: activeVerification, error: activeVerificationError } = await adminClient
+    const { data: activeCandidates, error: activeVerificationError } = await adminClient
       .from('grade_verifications')
-      .select('id, status')
+      .select('id, status, confirmation_required, transcript_storage_bucket, transcript_storage_path')
       .eq('user_id', user.id)
       .in('status', ['pending_review', 'manual_required'])
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(5);
 
     if (activeVerificationError) {
       console.error('Grade upload active-verification error:', activeVerificationError);
     }
+
+    const activeVerification = (activeCandidates || []).find(
+      (row) =>
+        Boolean(row.transcript_storage_bucket && row.transcript_storage_path) ||
+        Boolean(row.confirmation_required)
+    );
 
     if (activeVerification) {
       return NextResponse.json(

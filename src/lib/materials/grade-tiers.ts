@@ -51,6 +51,15 @@ const GRADE_TIERS: Record<string, GradeTier> = {
   },
 };
 
+export function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '');
+  const value = Number.parseInt(normalized, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function getGradeTier(grade: string): GradeTier {
   return GRADE_TIERS[grade] || GRADE_TIERS.B;
 }
@@ -58,4 +67,9 @@ export function getGradeTier(grade: string): GradeTier {
 export function getGradeTierGradient(grade: string): string {
   const tier = getGradeTier(grade);
   return `linear-gradient(135deg, ${tier.color} 0%, ${tier.secondaryColor} 100%)`;
+}
+
+export function getGradeTierFigmaGradient(grade: string): string {
+  const tier = getGradeTier(grade);
+  return `linear-gradient(to left, ${hexToRgba(tier.secondaryColor, 0.8)} 43.309%, ${hexToRgba(tier.color, 0.8)} 100%)`;
 }

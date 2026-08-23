@@ -5,32 +5,22 @@ import {
   isAuthorizedSupport,
   isAuthorizedVerificationReviewer,
 } from '@/lib/auth/admin-access';
-import { createClient } from '@/lib/supabase/server';
-import { adminClient } from '@/lib/supabase/admin';
+import { getAuthIdentity } from '@/lib/auth/session';
+import { resolveUserRoles } from '@/lib/grades/admin';
 
 export const dynamic = 'force-dynamic';
 
-async function resolveRoles(userId: string) {
-  const { data } = await adminClient.from('user_roles').select('role').eq('user_id', userId);
-  return (data || []).map((row) => row.role as 'user' | 'support' | 'admin' | 'assistant');
-}
-
 export async function GET() {
-  const supabase = createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
+  const identity = await getAuthIdentity();
+  if (!identity) {
     return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, { status: 401 });
   }
 
-  const roles = await resolveRoles(user.id);
-  const isAdmin = isAuthorizedAdmin(user.email, roles);
-  const isAssistant = isAuthorizedAssistant(user.email, roles);
-  const isSupport = isAuthorizedSupport(user.email, roles);
-  const isVerificationReviewer = isAuthorizedVerificationReviewer(user.email, roles);
+  const roles = await resolveUserRoles(identity.id);
+  const isAdmin = isAuthorizedAdmin(identity.email, roles);
+  const isAssistant = isAuthorizedAssistant(identity.email, roles);
+  const isSupport = isAuthorizedSupport(identity.email, roles);
+  const isVerificationReviewer = isAuthorizedVerificationReviewer(identity.email, roles);
 
   if (!isAdmin && !isAssistant && !isSupport) {
     return NextResponse.json({ error: { code: 'FORBIDDEN', message: 'Staff access required' } }, { status: 403 });
@@ -38,8 +28,8 @@ export async function GET() {
 
   return NextResponse.json({
     data: {
-      userId: user.id,
-      email: user.email,
+      userId: identity.id,
+      email: identity.email,
       roles,
       isAdmin,
       isAssistant,

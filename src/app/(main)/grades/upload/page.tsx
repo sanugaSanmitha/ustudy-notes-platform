@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -82,6 +82,7 @@ function AdminReviewFields({
   ownershipConfirmed,
   onOwnershipConfirmedChange,
   disabled,
+  compact = false,
 }: {
   issueType: AdminReviewIssueType;
   onIssueTypeChange: (value: AdminReviewIssueType) => void;
@@ -92,9 +93,12 @@ function AdminReviewFields({
   ownershipConfirmed: boolean;
   onOwnershipConfirmedChange: (value: boolean) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   return (
     <div className="space-y-4">
+      {compact ? null : (
+      <>
       <fieldset>
         <Label className="mb-2 block text-sm font-medium text-slate-700">What issue are you reporting?</Label>
         <div className="space-y-2">
@@ -149,6 +153,8 @@ function AdminReviewFields({
         />
         <p className="mt-1 text-xs text-slate-500">Maximum 500 characters</p>
       </div>
+      </>
+      )}
 
       <label className="flex items-start gap-2 text-sm text-slate-700">
         <Checkbox
@@ -190,7 +196,20 @@ export default function GradeUploadPage() {
   const [isVerifiedSeller, setIsVerifiedSeller] = useState(false);
   const [canReuploadTranscript, setCanReuploadTranscript] = useState(true);
   const [reuploadCooldownLabel, setReuploadCooldownLabel] = useState<string | null>(null);
-  const [reuploadCooldownHours, setReuploadCooldownHours] = useState(1);
+  const [reuploadCooldownHours, setReuploadCooldownHours] = useState(0);
+
+  const refreshUploadStatus = useCallback(async () => {
+    const statusResponse = await fetch('/api/grades/status', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+    const statusResult = await statusResponse.json().catch(() => null);
+    if (!statusResponse.ok || !statusResult?.data) return;
+
+    setIsVerifiedSeller(Boolean(statusResult.data.isVerifiedSeller));
+    setCanReuploadTranscript(Boolean(statusResult.data.canReuploadTranscript));
+    setReuploadCooldownLabel(statusResult.data.reuploadCooldownLabel || null);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -206,7 +225,7 @@ export default function GradeUploadPage() {
         if (configResponse.ok && configResult?.data) {
           setMaxUploadsPerDay(configResult.data.maxUploadsPerDay || 50);
           setMaxFileSizeMb(configResult.data.maxFileSizeMb || 10);
-          setReuploadCooldownHours(configResult.data.reuploadCooldownHours || 1);
+          setReuploadCooldownHours(configResult.data.reuploadCooldownHours ?? 0);
         }
 
         const statusResult = await statusResponse.json().catch(() => null);
@@ -392,6 +411,44 @@ export default function GradeUploadPage() {
     setReviewRows((prev) => prev.filter((row) => row.id !== rowId));
   };
 
+  const handleSaveReviewRows = async () => {
+    setError('');
+    setSuccess('');
+    setFormError('');
+    if (!reviewVerificationId) {
+      setFormError('No verification session found. Please upload again.');
+      return;
+    }
+    if (reviewRows.length === 0) {
+      setFormError('Add at least one course before saving.');
+      return;
+    }
+
+    setReviewSaving(true);
+    try {
+      const response = await fetch('/api/grades/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          verificationId: reviewVerificationId,
+          reviewRows,
+          mode: 'draft',
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        setFormError(result?.error?.message || 'Failed to save course rows.');
+        return;
+      }
+      setSuccess(result?.data?.message || 'Saved.');
+    } catch (saveError) {
+      console.error('Save review rows error:', saveError);
+      setFormError('Unable to save course rows right now.');
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
   const handleConfirmAiResults = async () => {
     setError('');
     setSuccess('');
@@ -523,9 +580,9 @@ export default function GradeUploadPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           verificationId: activeVerificationId,
-          issueType: adminIssueType,
-          message,
-          externalTranscriptUrl,
+          issueType: isManualPath ? adminIssueType : 'other',
+          message: isManualPath ? message : undefined,
+          externalTranscriptUrl: isManualPath ? externalTranscriptUrl : undefined,
           ownershipConfirmed,
           courseRows: courseRowsPayload,
         }),
@@ -587,6 +644,7 @@ export default function GradeUploadPage() {
       setManualMessage('');
       setManualExternalTranscriptUrl('');
       setOwnershipConfirmed(false);
+      await refreshUploadStatus();
     } catch (cancelError) {
       console.error('Cancel manual review error:', cancelError);
       setError('Unable to cancel manual review right now.');
@@ -595,6 +653,15 @@ export default function GradeUploadPage() {
     }
   };
 
+  const uploadBlocked = isVerifiedSeller && !canReuploadTranscript;
+  const uploadBlockedReason = !uploadBlocked
+    ? null
+    : reuploadCooldownLabel
+      ? `Re-upload available in ${reuploadCooldownLabel}.`
+      : reviewVerificationId || manualVerificationId
+        ? 'Finish or cancel your current review before uploading another transcript.'
+        : 'You already have a verification in progress. Open verification status to continue.';
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-3xl font-bold text-slate-900">
@@ -602,13 +669,17 @@ export default function GradeUploadPage() {
       </h1>
       <p className="mt-2 text-slate-600">
         {isVerifiedSeller
-          ? `Upload an updated transcript to add new courses to your verified record. Existing grades are kept unchanged, and duplicate courses are ignored. You can submit again after a ${reuploadCooldownHours}-hour cooldown.`
+          ? `Upload an updated transcript to add new courses to your verified record. Existing grades are kept unchanged, and duplicate courses are ignored.${
+              reuploadCooldownHours > 0
+                ? ` You can submit again after a ${reuploadCooldownHours}-hour cooldown.`
+                : ''
+            }`
           : 'Upload your transcript to unlock note uploading. If parsing fails, you can submit grades manually.'}
       </p>
 
-      {isVerifiedSeller && !canReuploadTranscript && reuploadCooldownLabel && (
+      {uploadBlockedReason && (
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Re-upload available in {reuploadCooldownLabel}.
+          {uploadBlockedReason}
         </div>
       )}
 
@@ -647,11 +718,12 @@ export default function GradeUploadPage() {
 
           <Button
             type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-            disabled={loading || (isVerifiedSeller && !canReuploadTranscript)}
+            className="bg-[#1f2f66] text-white hover:bg-[#18254f] disabled:opacity-60"
+            disabled={loading || uploadBlocked}
           >
             {loading ? 'Uploading...' : isVerifiedSeller ? 'Upload Updated Transcript' : 'Upload Transcript'}
           </Button>
+          {uploadBlockedReason ? <p className="text-xs text-slate-500">{uploadBlockedReason}</p> : null}
         </form>
 
         {reviewVerificationId && reviewRows.length > 0 && (
@@ -766,7 +838,7 @@ export default function GradeUploadPage() {
             )}
             {(rowSummary.hasNeedsReview || !autoApprovalEligible) && (
               <form onSubmit={handleAdminReviewRequest} className="mt-6 space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-                <h3 className="text-sm font-semibold text-slate-900">Request admin review</h3>
+                <h3 className="text-sm font-semibold text-slate-900">Confirm Submission</h3>
                 {formError && !manualVerificationId && (
                   <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{formError}</div>
                 )}
@@ -780,6 +852,7 @@ export default function GradeUploadPage() {
                   ownershipConfirmed={ownershipConfirmed}
                   onOwnershipConfirmedChange={setOwnershipConfirmed}
                   disabled={reviewSaving || adminRequestSubmitting}
+                  compact
                 />
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -787,7 +860,15 @@ export default function GradeUploadPage() {
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     disabled={reviewSaving || adminRequestSubmitting || !ownershipConfirmed}
                   >
-                    {adminRequestSubmitting ? 'Sending...' : 'Request Admin Review'}
+                    {adminRequestSubmitting ? 'Sending...' : 'Request Administrator Verification'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSaveReviewRows}
+                    disabled={reviewSaving || adminRequestSubmitting || cancelReviewSubmitting}
+                  >
+                    {reviewSaving ? 'Saving...' : 'Save'}
                   </Button>
                   <Button
                     type="button"
@@ -795,7 +876,7 @@ export default function GradeUploadPage() {
                     onClick={handleCancelManualReview}
                     disabled={reviewSaving || adminRequestSubmitting || cancelReviewSubmitting}
                   >
-                    {cancelReviewSubmitting ? 'Cancelling...' : 'Cancel and delete uploaded transcript'}
+                    {cancelReviewSubmitting ? 'Cancelling...' : 'Cancel'}
                   </Button>
                 </div>
               </form>

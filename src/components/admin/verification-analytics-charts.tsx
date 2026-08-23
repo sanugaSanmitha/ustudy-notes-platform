@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
+  Brush,
   CartesianGrid,
   Cell,
   Legend,
@@ -16,14 +17,25 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { BarChart3, PieChart as PieChartIcon, TrendingUp } from 'lucide-react';
+import { BarChart3, PieChart as PieChartIcon, TrendingUp, ZoomOut } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 export type VerificationAnalyticsData = {
   statusDistribution: Array<{ name: string; status: string; value: number; color: string }>;
   monthlyData: Array<{
+    monthKey: string;
     month: string;
+    approved: number;
+    rejected: number;
+    pending: number;
+    reviewing: number;
+    escalated: number;
+  }>;
+  dailyData?: Array<{
+    monthKey: string;
+    dateKey: string;
+    label: string;
     approved: number;
     rejected: number;
     pending: number;
@@ -99,6 +111,33 @@ const PIE_STATUS_KEYS: Record<MetricKey, string[]> = {
 
 const DEFAULT_METRICS: MetricKey[] = ['approved', 'rejected'];
 
+type BarGranularity = 'month' | 'day';
+
+type BrushRange = {
+  startIndex: number;
+  endIndex: number;
+};
+
+type BarTrendPoint = {
+  monthKey: string;
+  approved: number;
+  rejected: number;
+  pending: number;
+  reviewing: number;
+  escalated: number;
+  month?: string;
+  label?: string;
+  dateKey?: string;
+};
+
+function formatMonthTitle(monthKey: string) {
+  const [year, month] = monthKey.split('-');
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 function metricsForChartType(chartType: ChartType) {
   return METRIC_OPTIONS.filter((option) => option.chartTypes.includes(chartType));
 }
@@ -110,6 +149,15 @@ export function VerificationAnalyticsCharts({
 }: VerificationAnalyticsChartsProps) {
   const [chartType, setChartType] = useState<ChartType>('bar');
   const [selectedMetrics, setSelectedMetrics] = useState<MetricKey[]>(DEFAULT_METRICS);
+  const [barGranularity, setBarGranularity] = useState<BarGranularity>('month');
+  const [focusedMonthKey, setFocusedMonthKey] = useState<string | null>(null);
+  const [monthBrushRange, setMonthBrushRange] = useState<BrushRange | null>(null);
+
+  useEffect(() => {
+    setBarGranularity('month');
+    setFocusedMonthKey(null);
+    setMonthBrushRange(null);
+  }, [data.monthlyData, data.dailyData]);
 
   const availableMetrics = useMemo(() => metricsForChartType(chartType), [chartType]);
 
@@ -141,6 +189,66 @@ export function VerificationAnalyticsCharts({
     );
     return data.statusDistribution.filter((entry) => allowedStatuses.has(entry.status));
   }, [data.statusDistribution, visibleMetrics]);
+
+  const monthlyBarData = useMemo(() => {
+    if (!monthBrushRange) return data.monthlyData;
+    return data.monthlyData.slice(monthBrushRange.startIndex, monthBrushRange.endIndex + 1);
+  }, [data.monthlyData, monthBrushRange]);
+
+  const dailyBarData = useMemo(() => {
+    if (!focusedMonthKey || !data.dailyData) return [];
+    return data.dailyData.filter((point) => point.monthKey === focusedMonthKey);
+  }, [data.dailyData, focusedMonthKey]);
+
+  const barChartData: BarTrendPoint[] = barGranularity === 'day' ? dailyBarData : monthlyBarData;
+  const barXAxisKey = barGranularity === 'day' ? 'label' : 'month';
+  const isZoomedToDays = barGranularity === 'day' && focusedMonthKey !== null;
+
+  const zoomOut = useCallback(() => {
+    setBarGranularity('month');
+    setFocusedMonthKey(null);
+    setMonthBrushRange(null);
+  }, []);
+
+  const drillIntoMonth = useCallback(
+    (monthKey: string) => {
+      if (!data.dailyData?.some((point) => point.monthKey === monthKey)) return;
+      setFocusedMonthKey(monthKey);
+      setBarGranularity('day');
+      setMonthBrushRange(null);
+    },
+    [data.dailyData]
+  );
+
+  const handleBarChartClick = useCallback(
+    (state: { activeLabel?: string | number }) => {
+      if (barGranularity !== 'month' || !state?.activeLabel) return;
+      const monthPoint = data.monthlyData.find((point) => point.month === state.activeLabel);
+      if (monthPoint?.monthKey) drillIntoMonth(monthPoint.monthKey);
+    },
+    [barGranularity, data.monthlyData, drillIntoMonth]
+  );
+
+  const handleMonthBrushChange = useCallback(
+    (range: BrushRange | null) => {
+      if (!range || range.startIndex === undefined || range.endIndex === undefined) {
+        setMonthBrushRange(null);
+        return;
+      }
+
+      const nextRange = {
+        startIndex: Math.min(range.startIndex, range.endIndex),
+        endIndex: Math.max(range.startIndex, range.endIndex),
+      };
+      setMonthBrushRange(nextRange);
+
+      if (nextRange.startIndex === nextRange.endIndex) {
+        const monthPoint = data.monthlyData[nextRange.startIndex];
+        if (monthPoint?.monthKey) drillIntoMonth(monthPoint.monthKey);
+      }
+    },
+    [data.monthlyData, drillIntoMonth]
+  );
 
   const chartHeight = compact ? 280 : 384;
 
@@ -264,16 +372,43 @@ export function VerificationAnalyticsCharts({
           <div className="flex h-full items-center justify-center text-sm text-slate-500">
             Select at least one pipeline metric to show in the pie chart.
           </div>
+        ) : chartType === 'bar' && barChartData.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-sm text-slate-500">
+            No data for this time range.
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             {chartType === 'bar' ? (
-              <BarChart data={data.monthlyData}>
+              <BarChart
+                data={barChartData}
+                onClick={handleBarChartClick}
+                margin={{ bottom: isZoomedToDays ? 8 : 28 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                <XAxis
+                  dataKey={barXAxisKey}
+                  tick={{ fontSize: barGranularity === 'day' ? 10 : 12 }}
+                  interval={barGranularity === 'day' ? 1 : 0}
+                  angle={barGranularity === 'day' ? -35 : 0}
+                  textAnchor={barGranularity === 'day' ? 'end' : 'middle'}
+                  height={barGranularity === 'day' ? 56 : 30}
+                />
                 <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                 <Tooltip />
                 <Legend />
                 {renderBars()}
+                {!isZoomedToDays && data.monthlyData.length > 1 ? (
+                  <Brush
+                    dataKey="month"
+                    height={24}
+                    stroke="#94a3b8"
+                    fill="#f8fafc"
+                    travellerWidth={10}
+                    startIndex={monthBrushRange?.startIndex ?? 0}
+                    endIndex={monthBrushRange?.endIndex ?? data.monthlyData.length - 1}
+                    onChange={handleMonthBrushChange}
+                  />
+                ) : null}
               </BarChart>
             ) : chartType === 'pie' ? (
               <PieChart>
@@ -306,6 +441,26 @@ export function VerificationAnalyticsCharts({
           </ResponsiveContainer>
         )}
       </div>
+
+      {chartType === 'bar' ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+          <p className="text-xs text-slate-500">
+            {isZoomedToDays && focusedMonthKey
+              ? `Daily view for ${formatMonthTitle(focusedMonthKey)}`
+              : 'Click a month or drag the brush to one month to see daily counts.'}
+          </p>
+          {isZoomedToDays ? (
+            <button
+              type="button"
+              onClick={zoomOut}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:text-blue-700"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+              Show all months
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-5">
         {(

@@ -23,9 +23,11 @@ function formatProfileDbError(error: unknown, fallback: string) {
     (rawMessage.includes("full_name") ||
       rawMessage.includes("school") ||
       rawMessage.includes("profile_completed") ||
+      rawMessage.includes("avatar_url") ||
       rawDetails.includes("full_name") ||
       rawDetails.includes("school") ||
-      rawDetails.includes("profile_completed"))
+      rawDetails.includes("profile_completed") ||
+      rawDetails.includes("avatar_url"))
   ) {
     return "Profile fields are not ready in the database. Run docs/migrations/006_auth_bootstrap_all_in_one.sql in Supabase SQL Editor.";
   }
@@ -49,11 +51,33 @@ export async function GET() {
       );
     }
 
-    const { data, error } = await adminClient
-      .from("users")
-      .select("*")
-      .eq("id", user.id)
-      .maybeSingle();
+    const profileSelectWithAvatar =
+      "id, email, full_name, school, profile_completed, anonymous_id, is_seller, is_first_purchase, avatar_url, created_at, updated_at";
+    const profileSelectWithoutAvatar =
+      "id, email, full_name, school, profile_completed, anonymous_id, is_seller, is_first_purchase, created_at, updated_at";
+
+    const [profileResult, rolesResult] = await Promise.all([
+      adminClient
+        .from("users")
+        .select(profileSelectWithAvatar)
+        .eq("id", user.id)
+        .maybeSingle(),
+      adminClient
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id),
+    ]);
+
+    let { data, error } = profileResult;
+    if (error?.message?.includes("avatar_url")) {
+      const fallback = await adminClient
+        .from("users")
+        .select(profileSelectWithoutAvatar)
+        .eq("id", user.id)
+        .maybeSingle();
+      data = fallback.data ? { ...fallback.data, avatar_url: null } : null;
+      error = fallback.error;
+    }
 
     if (error) {
       console.error("Profile fetch error:", error);
@@ -67,6 +91,20 @@ export async function GET() {
         { status: 500 }
       );
     }
+
+    if (rolesResult.error) {
+      console.error("Profile role fetch error:", rolesResult.error);
+    }
+
+    const roleRows = rolesResult.data || [];
+
+    const roles = roleRows
+      .map((row) => row.role)
+      .filter((role): role is "user" | "support" | "admin" | "assistant" =>
+        role === "user" || role === "support" || role === "admin" || role === "assistant"
+      );
+
+    const isAdmin = isAuthorizedAdmin(user.email, roles);
 
     let profile = data;
 
@@ -93,7 +131,7 @@ export async function GET() {
           },
           { onConflict: "id" }
         )
-        .select("*")
+        .select(profileSelectWithoutAvatar)
         .single();
 
       if (insertError || !insertedProfile) {
@@ -110,7 +148,7 @@ export async function GET() {
         );
       }
 
-      profile = insertedProfile;
+      profile = { ...insertedProfile, avatar_url: null };
     }
 
     if (!profile) {
@@ -125,19 +163,6 @@ export async function GET() {
         { status: 404 }
       );
     }
-
-    const { data: roleRows } = await adminClient
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id);
-
-    const roles = (roleRows || [])
-      .map((row) => row.role)
-      .filter((role): role is "user" | "support" | "admin" =>
-        role === "user" || role === "support" || role === "admin"
-      );
-
-    const isAdmin = isAuthorizedAdmin(user.email, roles);
 
     return NextResponse.json(
       {
@@ -154,6 +179,7 @@ export async function GET() {
           anonymousId: profile.anonymous_id,
           isSeller: profile.is_seller,
           isFirstPurchase: profile.is_first_purchase,
+          avatarUrl: "avatar_url" in profile ? profile.avatar_url : null,
           isAdmin,
           createdAt: profile.created_at,
           updatedAt: profile.updated_at,
@@ -161,6 +187,7 @@ export async function GET() {
       },
       { status: 200 }
     );
+
   } catch (error) {
     console.error("Profile error:", error);
     return NextResponse.json(

@@ -21,38 +21,41 @@ function applyCreatedRange<T extends { gte: (col: string, val: string) => T; lte
   return query.lte(column, range.to);
 }
 
-export async function fetchTodayActivity() {
+export async function fetchTodayActivity(options?: { approvedToday?: number; rejectedToday?: number }) {
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
   const dayStartIso = dayStart.toISOString();
 
-  const [
-    approvedTodayResult,
-    rejectedTodayResult,
-    assignedTodayResult,
-    resolvedTodayResult,
-  ] = await Promise.all([
-    adminClient
-      .from('admin_review_requests')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'approved')
-      .gte('resolved_at', dayStartIso),
-    adminClient
-      .from('admin_review_requests')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'rejected')
-      .gte('resolved_at', dayStartIso),
-    adminClient
-      .from('review_actions')
-      .select('id', { count: 'exact', head: true })
-      .in('action_type', ['review_assigned', 'review_reassigned'])
-      .gte('created_at', dayStartIso),
-    adminClient
-      .from('admin_review_requests')
-      .select('review_started_at, resolved_at')
-      .in('status', ['approved', 'rejected'])
-      .gte('resolved_at', dayStartIso),
-  ]);
+  const hasPrecomputedCounts =
+    options?.approvedToday !== undefined && options?.rejectedToday !== undefined;
+
+  const [assignedTodayResult, resolvedTodayResult, approvedTodayResult, rejectedTodayResult] =
+    await Promise.all([
+      adminClient
+        .from('review_actions')
+        .select('id', { count: 'exact', head: true })
+        .in('action_type', ['review_assigned', 'review_reassigned'])
+        .gte('created_at', dayStartIso),
+      adminClient
+        .from('admin_review_requests')
+        .select('review_started_at, resolved_at')
+        .in('status', ['approved', 'rejected'])
+        .gte('resolved_at', dayStartIso),
+      hasPrecomputedCounts
+        ? Promise.resolve({ count: options.approvedToday })
+        : adminClient
+            .from('admin_review_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'approved')
+            .gte('resolved_at', dayStartIso),
+      hasPrecomputedCounts
+        ? Promise.resolve({ count: options.rejectedToday })
+        : adminClient
+            .from('admin_review_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'rejected')
+            .gte('resolved_at', dayStartIso),
+    ]);
 
   const approvedToday = approvedTodayResult.count || 0;
   const rejectedToday = rejectedTodayResult.count || 0;

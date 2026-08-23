@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useLocale } from '@/components/i18n/LocaleProvider';
 import { isStaffEmail, staffEmailExceptionMessage } from '@/lib/auth/staff-emails';
 
 const PENDING_EMAIL_KEY = 'pendingVerificationEmail';
@@ -28,7 +29,6 @@ function normalizeVerificationToken(input: string) {
   const trimmed = input.trim();
   if (!trimmed) return '';
 
-  // If user pastes the full verify link, extract the token.
   if (/^https?:\/\//i.test(trimmed)) {
     try {
       const parsed = new URL(trimmed);
@@ -38,7 +38,6 @@ function normalizeVerificationToken(input: string) {
     }
   }
 
-  // Support users pasting only query text like "token=abc123".
   if (trimmed.startsWith('token=')) {
     return trimmed.slice('token='.length).trim();
   }
@@ -49,6 +48,7 @@ function normalizeVerificationToken(input: string) {
 export default function VerifyEmailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useLocale();
 
   const [email, setEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
@@ -80,7 +80,7 @@ export default function VerifyEmailPage() {
     const normalizedToken = normalizeVerificationToken(verifyToken);
 
     if (!normalizedToken) {
-      setError('Please enter a valid verification code');
+      setError(t('authInvalidVerificationCode'));
       setLoading(false);
       return;
     }
@@ -98,7 +98,7 @@ export default function VerifyEmailPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.error?.message || 'Verification failed');
+        setError(result.error?.message || t('authVerificationFailed'));
         setLoading(false);
         return;
       }
@@ -108,11 +108,11 @@ export default function VerifyEmailPage() {
         router.push('/login');
       }, 2000);
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(t('updateNameUnexpected'));
       console.error('Verification error:', err);
       setLoading(false);
     }
-  }, [router]);
+  }, [router, t]);
 
   useEffect(() => {
     const emailFromUrl = searchParams.get('email')?.trim().toLowerCase() || '';
@@ -139,7 +139,7 @@ export default function VerifyEmailPage() {
     setLoading(true);
 
     if (!verificationCode) {
-      setError('Please enter the verification code');
+      setError(t('authEnterVerificationCode'));
       setLoading(false);
       return;
     }
@@ -155,15 +155,13 @@ export default function VerifyEmailPage() {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail) {
-      setError('Enter your University email address to resend the verification email.');
+      setError(t('authEnterEmailForResend'));
       setResendLoading(false);
       return;
     }
 
     if (!isStaffEmail(normalizedEmail) && !/@(connect\.)?ust\.hk$/i.test(normalizedEmail)) {
-      setError(
-        `Only @ust.hk or @connect.ust.hk email addresses are allowed (except ${staffEmailExceptionMessage()}).`
-      );
+      setError(t('authEmailDomainOnly').replace('{exception}', staffEmailExceptionMessage()));
       setResendLoading(false);
       return;
     }
@@ -171,7 +169,7 @@ export default function VerifyEmailPage() {
     sessionStorage.setItem(PENDING_EMAIL_KEY, normalizedEmail);
 
     if (resendCount >= MAX_RESEND_ATTEMPTS_PER_DAY) {
-      setError(`You have exceeded the maximum resend attempts (${MAX_RESEND_ATTEMPTS_PER_DAY} per day). Please try again tomorrow.`);
+      setError(t('authResendMaxExceeded').replace('{max}', String(MAX_RESEND_ATTEMPTS_PER_DAY)));
       setResendLoading(false);
       return;
     }
@@ -186,7 +184,7 @@ export default function VerifyEmailPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.error?.message || 'Failed to resend email');
+        setError(result.error?.message || t('authResendFailed'));
         setResendLoading(false);
         return;
       }
@@ -200,7 +198,7 @@ export default function VerifyEmailPage() {
         setVerificationCode('');
         setCodeFingerprint('');
         setLastCodeSentAt(null);
-        setNotice(result.data?.message || 'If this email is eligible, we sent a verification email.');
+        setNotice(result.data?.message || t('authResendEligible'));
         setTimeout(() => setNotice(''), 5000);
         setResendLoading(false);
         return;
@@ -212,12 +210,10 @@ export default function VerifyEmailPage() {
 
       const sentDate = new Date(tokenIssuedAt);
       setLastCodeSentAt(sentDate);
-      setNotice(
-        `New verification email sent at ${formatSentAt(sentDate)}. Check your inbox. Older codes no longer work.`
-      );
+      setNotice(t('authNewVerificationSent').replace('{time}', formatSentAt(sentDate)));
       setTimeout(() => setNotice(''), 5000);
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(t('updateNameUnexpected'));
       console.error('Resend error:', err);
     }
 
@@ -233,8 +229,8 @@ export default function VerifyEmailPage() {
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Email Verified!</h2>
-          <p className="text-slate-600 mb-6">Your account is ready. Redirecting to login...</p>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('authVerifySuccessTitle')}</h2>
+          <p className="text-slate-600 mb-6">{t('authVerifySuccessBody')}</p>
         </div>
       </div>
     );
@@ -244,9 +240,9 @@ export default function VerifyEmailPage() {
     <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Verify Your Email</h1>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('authVerifyTitle')}</h1>
           <p className="text-slate-500">
-            {email ? `We sent a verification code to ${email}` : 'Verification'}
+            {email ? t('authVerifySentTo').replace('{email}', email) : t('authVerification')}
           </p>
         </div>
 
@@ -265,7 +261,7 @@ export default function VerifyEmailPage() {
         <form onSubmit={handleVerifyManually} className="space-y-4">
           <div>
             <Label htmlFor="code" className="block text-sm font-medium text-slate-700 mb-1">
-              Verification Code
+              {t('authVerificationCode')}
             </Label>
             <Input
               id="code"
@@ -276,19 +272,19 @@ export default function VerifyEmailPage() {
                 setVerificationCode(nextCode);
                 setCodeFingerprint(getCodeFingerprint(nextCode));
               }}
-              placeholder="Paste the code from your email"
+              placeholder={t('authPasteCodePlaceholder')}
               className="w-full"
               disabled={loading}
             />
             {lastCodeSentAt && (
               <p className="text-xs text-slate-600 mt-2">
-                Last code sent at {formatSentAt(lastCodeSentAt)}
-                {codeFingerprint ? ` - ends with ${codeFingerprint}` : ''}
+                {t('authLastCodeSentAt').replace('{time}', formatSentAt(lastCodeSentAt))}
+                {codeFingerprint
+                  ? ` — ${t('authCodeEndsWith').replace('{fingerprint}', codeFingerprint)}`
+                  : ''}
               </p>
             )}
-            <p className="text-xs text-slate-500 mt-1">
-              You can paste either the token or full verification link. After resend, only the latest code works.
-            </p>
+            <p className="text-xs text-slate-500 mt-1">{t('authVerifyCodeHint')}</p>
           </div>
 
           <Button
@@ -296,14 +292,14 @@ export default function VerifyEmailPage() {
             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             disabled={loading}
           >
-            {loading ? 'Verifying...' : 'Verify Email'}
+            {loading ? t('authVerifying') : t('authVerifyEmail')}
           </Button>
         </form>
 
         <div className="mt-6 pt-6 border-t border-slate-200 space-y-4">
           <div>
             <Label htmlFor="resend-email" className="block text-sm font-medium text-slate-700 mb-1">
-              Email for resend
+              {t('authEmailForResend')}
             </Label>
             <Input
               id="resend-email"
@@ -316,20 +312,20 @@ export default function VerifyEmailPage() {
             />
           </div>
 
-          <p className="text-center text-slate-600 text-sm">
-            Didn&apos;t receive the email?
-          </p>
+          <p className="text-center text-slate-600 text-sm">{t('authDidntReceiveEmail')}</p>
           <Button
             onClick={handleResendEmail}
             variant="outline"
             className="w-full"
             disabled={resendLoading}
           >
-            {resendLoading ? 'Sending...' : 'Resend Verification Email'}
+            {resendLoading ? t('authSending') : t('authResendVerificationEmail')}
           </Button>
           {resendCount > 0 && (
             <p className="text-xs text-slate-500 mt-2 text-center">
-              Resent {resendCount}/{MAX_RESEND_ATTEMPTS_PER_DAY} times today
+              {t('authResentCount')
+                .replace('{count}', String(resendCount))
+                .replace('{max}', String(MAX_RESEND_ATTEMPTS_PER_DAY))}
             </p>
           )}
         </div>

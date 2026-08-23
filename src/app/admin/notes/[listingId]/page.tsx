@@ -359,7 +359,7 @@ export default function AdminNoteReviewDetailPage() {
 
           {confirmAction && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-              <Card className="w-full max-w-md p-5">
+              <Card className="w-full max-w-md bg-white p-5 shadow-lg">
                 <h3 className="text-lg font-semibold text-slate-900">
                   {confirmAction === 'approve' ? 'Publish this listing?' : 'Reject this listing?'}
                 </h3>

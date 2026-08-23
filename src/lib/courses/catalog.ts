@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache';
 import { adminClient } from '@/lib/supabase/admin';
 import { normalizeCourseCode } from '@/lib/grades/review-model';
+import { getPublishedListingCountsByCourse } from '@/lib/notes/marketplace';
 
 export type CatalogCourse = {
   courseCode: string;
@@ -92,12 +93,7 @@ async function searchCoursesUncached(params: Required<Pick<CourseSearchParams, '
   };
 }
 
-export async function getCoursesByCode(courseCode: string) {
-  const code = normalizeCourseCode(courseCode);
-  if (!code) {
-    return { ok: true as const, courses: [] as CatalogCourse[], primary: null as CatalogCourse | null };
-  }
-
+async function getCoursesByCodeUncached(code: string) {
   const { data, error } = await adminClient
     .from('courses')
     .select('course_code, course_title, level')
@@ -106,7 +102,7 @@ export async function getCoursesByCode(courseCode: string) {
 
   if (error) {
     if (error.message.includes('relation "public.courses" does not exist')) {
-      return { ok: false as const, error: 'CATALOG_NOT_READY', courses: [], primary: null };
+      return { ok: false as const, error: 'CATALOG_NOT_READY' as const, courses: [] as CatalogCourse[], primary: null as CatalogCourse | null };
     }
     throw error;
   }
@@ -117,6 +113,19 @@ export async function getCoursesByCode(courseCode: string) {
     courses: rows.map(mapCourse),
     primary: pickPrimaryCourse(rows),
   };
+}
+
+export async function getCoursesByCode(courseCode: string) {
+  const code = normalizeCourseCode(courseCode);
+  if (!code) {
+    return { ok: true as const, courses: [] as CatalogCourse[], primary: null as CatalogCourse | null };
+  }
+
+  return unstable_cache(
+    () => getCoursesByCodeUncached(code),
+    ['course-by-code', code],
+    { revalidate: 3600, tags: ['course-catalog'] }
+  )();
 }
 
 export async function getCourseTitlesByCode(courseCodes: string[]) {
@@ -141,9 +150,17 @@ export async function getCourseTitlesByCode(courseCodes: string[]) {
     throw error;
   }
 
+  const rowsByCode = new Map<string, CourseRow[]>();
+  for (const row of (data || []) as CourseRow[]) {
+    const code = normalizeCourseCode(row.course_code);
+    if (!code) continue;
+    const list = rowsByCode.get(code) || [];
+    list.push(row);
+    rowsByCode.set(code, list);
+  }
+
   for (const code of codes) {
-    const rows = (data || []).filter((row) => normalizeCourseCode(row.course_code) === code) as CourseRow[];
-    const primary = pickPrimaryCourse(rows);
+    const primary = pickPrimaryCourse(rowsByCode.get(code) || []);
     if (primary) {
       titleByCode.set(code, primary.courseTitle);
     }
@@ -245,17 +262,78 @@ export async function findUnknownCourseCodes(courseCodes: string[]) {
   return normalizedCodes.filter((code) => !knownCodes.has(code));
 }
 
-export { getPublishedListingsForCourse } from '@/lib/notes/marketplace';
+export type BrowseCoursePill = {
+  courseCode: string;
+  listingCount: number;
+};
 
-export async function countPublishedNotes() {
-  const { count, error } = await adminClient
-    .from('note_listings')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'published');
+export type CourseLetterCount = {
+  letter: string;
+  count: number;
+};
 
-  if (error) {
-    return 0;
+export async function getCourseLetterCounts(level: 'UG' | 'PG' | 'all' = 'all'): Promise<CourseLetterCount[]> {
+  return unstable_cache(
+    () => getCourseLetterCountsUncached(level),
+    ['course-letter-counts-v2', level],
+    { revalidate: 3600, tags: ['course-catalog'] }
+  )();
+}
+
+async function getCourseLetterCountsUncached(level: 'UG' | 'PG' | 'all'): Promise<CourseLetterCount[]> {
+  const { data, error } = await adminClient.rpc('get_course_letter_counts', { p_level: level });
+
+  if (!error && Array.isArray(data)) {
+    return (data as Array<{ letter: string; count: number | string }>)
+      .map((row) => ({
+        letter: String(row.letter || '').toUpperCase(),
+        count: Number(row.count) || 0,
+      }))
+      .filter((row) => /^[A-Z]$/.test(row.letter) && row.count > 0)
+      .sort((a, b) => a.letter.localeCompare(b.letter));
   }
 
-  return count || 0;
+  const counts = new Map<string, number>();
+  const pageSize = 1000;
+  let from = 0;
+
+  while (true) {
+    let query = adminClient.from('courses').select('course_code');
+    if (level === 'UG' || level === 'PG') {
+      query = query.eq('level', level);
+    }
+
+    const { data, error } = await query.range(from, from + pageSize - 1);
+    if (error) {
+      if (error.message.includes('relation "public.courses" does not exist')) {
+        return [];
+      }
+      throw error;
+    }
+
+    const rows = data || [];
+    for (const row of rows) {
+      const letter = (row.course_code || '').charAt(0).toUpperCase();
+      if (letter >= 'A' && letter <= 'Z') {
+        counts.set(letter, (counts.get(letter) || 0) + 1);
+      }
+    }
+
+    if (rows.length < pageSize) {
+      break;
+    }
+    from += pageSize;
+  }
+
+  return Array.from({ length: 26 }, (_, index) => {
+    const letter = String.fromCharCode(65 + index);
+    return { letter, count: counts.get(letter) || 0 };
+  }).filter((item) => item.count > 0);
 }
+
+export async function getBrowseCoursePills(): Promise<BrowseCoursePill[]> {
+  const counts = await getPublishedListingCountsByCourse();
+  return counts.map(({ courseCode, listingCount }) => ({ courseCode, listingCount }));
+}
+
+export { getPublishedListingsForCourse } from '@/lib/notes/marketplace';

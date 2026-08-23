@@ -1,53 +1,33 @@
-'use client';
-
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { redirect } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { getAuthIdentity } from '@/lib/auth/session';
+import { adminClient } from '@/lib/supabase/admin';
 
-type VerifiedCourse = {
-  id: string;
-  course_code: string;
-  course_name: string | null;
-  grade: string;
-  academic_year: string | null;
-  semester: string | null;
-  verified_at: string;
-};
+export default async function VerifiedCoursesPage() {
+  const identity = await getAuthIdentity();
+  if (!identity) {
+    redirect('/login?next=/profile/verified-courses');
+  }
 
-export default function VerifiedCoursesPage() {
-  const [courses, setCourses] = useState<VerifiedCourse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data, error } = await adminClient
+    .from('verified_courses')
+    .select('id, course_code, course_name, grade, academic_year, semester, verified_at')
+    .eq('user_id', identity.id)
+    .order('course_code', { ascending: true });
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const response = await fetch('/api/verified-courses', { cache: 'no-store', credentials: 'same-origin' });
-        const result = await response.json().catch(() => null);
-        if (!response.ok) {
-          setError(result?.error?.message || 'Failed to load verified courses.');
-          return;
-        }
-        setCourses(result?.data?.courses || []);
-      } catch {
-        setError('Unable to load verified courses right now.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    void load();
-  }, []);
+  const courses = data || [];
 
   return (
     <div>
       <h1 className="text-3xl font-bold text-slate-900">Verified Courses</h1>
       <p className="mt-2 text-slate-600">Courses unlocked from your approved transcript verification.</p>
 
-      {loading ? (
-        <p className="mt-6 text-slate-600">Loading...</p>
-      ) : error ? (
-        <Card className="mt-6 border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</Card>
+      {error ? (
+        <Card className="mt-6 border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Failed to load verified courses. Run docs/migrations/015_verified_courses.sql in Supabase SQL Editor.
+        </Card>
       ) : courses.length === 0 ? (
         <Card className="mt-6 p-6 text-sm text-slate-700">
           No verified courses yet. Complete grade verification to unlock courses for note uploads.

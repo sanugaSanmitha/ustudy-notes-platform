@@ -75,7 +75,7 @@ function normalizeRows(request: ReviewPayload | null): EditableCourseRow[] {
 export default function AdminGradeReviewDetailPage() {
   const params = useParams<{ requestId: string }>();
   const router = useRouter();
-  const { isAdmin } = useAdminPortalRole();
+  const { isAdmin, staff } = useAdminPortalRole();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -93,7 +93,6 @@ export default function AdminGradeReviewDetailPage() {
   const [acknowledgeHighRisk, setAcknowledgeHighRisk] = useState(false);
   const [successNextId, setSuccessNextId] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [staff, setStaff] = useState<Array<{ id: string; full_name: string | null; email: string; roles: string[] }>>([]);
   const [workflowMessage, setWorkflowMessage] = useState('');
   const [reassignmentReason, setReassignmentReason] = useState('');
   const [infoRequestMessage, setInfoRequestMessage] = useState('');
@@ -137,14 +136,6 @@ export default function AdminGradeReviewDetailPage() {
   useEffect(() => {
     if (params.requestId) fetchDetail();
   }, [params.requestId, fetchDetail]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    fetch('/api/admin/staff/assistants', { cache: 'no-store', credentials: 'same-origin' })
-      .then((response) => response.json())
-      .then((result) => setStaff(result?.data?.staff || result?.data?.assistants || []))
-      .catch(() => null);
-  }, [isAdmin]);
 
   const runWorkflowAction = async (body: Record<string, unknown>) => {
     setSaving(true);

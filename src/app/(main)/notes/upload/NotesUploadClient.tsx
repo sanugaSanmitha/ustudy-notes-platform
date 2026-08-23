@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -26,6 +25,14 @@ type MaterialsResponse = {
   error?: { message?: string };
 };
 
+export type NotesUploadInitialData = {
+  courses: CourseWithMaterial[];
+  verificationId: string;
+  reuploadWindowLabel: string;
+  reuploadWindowShortLabel: string;
+  error?: string;
+};
+
 function buildAcademicYearOptions() {
   const current = new Date().getFullYear();
   const years: string[] = [];
@@ -41,18 +48,29 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export default function NotesUploadPage() {
-  const searchParams = useSearchParams();
-  const preselectedCourse = (searchParams.get('course') || '').toUpperCase();
+export default function NotesUploadPage({
+  initialData,
+  preselectedCourse = '',
+}: {
+  initialData?: NotesUploadInitialData | null;
+  preselectedCourse?: string;
+}) {
+  const selectedPrefill = preselectedCourse.toUpperCase();
 
-  const [verificationId, setVerificationId] = useState('');
-  const [courses, setCourses] = useState<CourseWithMaterial[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [verificationId, setVerificationId] = useState(initialData?.verificationId || '');
+  const [courses, setCourses] = useState<CourseWithMaterial[]>(initialData?.courses || []);
+  const [loading, setLoading] = useState(!initialData);
+  const [error, setError] = useState(initialData?.error || '');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const [selectedCourseCode, setSelectedCourseCode] = useState('');
+  const [selectedCourseCode, setSelectedCourseCode] = useState(() => {
+    const loaded = initialData?.courses || [];
+    if (selectedPrefill && loaded.some((course) => course.courseCode === selectedPrefill)) {
+      return selectedPrefill;
+    }
+    return loaded[0]?.courseCode || '';
+  });
   const [academicYear, setAcademicYear] = useState(buildAcademicYearOptions()[0] || '2024-2025');
   const [semester, setSemester] = useState<(typeof SEMESTERS)[number]>('Fall');
   const [zipFile, setZipFile] = useState<File | null>(null);
@@ -64,9 +82,19 @@ export default function NotesUploadPage() {
   const [languageChoice, setLanguageChoice] = useState<NoteLanguageOption>('English');
   const [customLanguage, setCustomLanguage] = useState('');
   const [priceHkd, setPriceHkd] = useState('49');
-  const [timeRemaining, setTimeRemaining] = useState<Record<string, number>>({});
-  const [reuploadWindowLabel, setReuploadWindowLabel] = useState('3 minutes');
-  const [reuploadWindowShortLabel, setReuploadWindowShortLabel] = useState('3 min');
+  const [timeRemaining, setTimeRemaining] = useState<Record<string, number>>(() => {
+    const timers: Record<string, number> = {};
+    (initialData?.courses || []).forEach((course) => {
+      if (course.material && !course.material.isLocked) {
+        timers[course.courseCode] = course.material.timeRemaining;
+      }
+    });
+    return timers;
+  });
+  const [reuploadWindowLabel, setReuploadWindowLabel] = useState(initialData?.reuploadWindowLabel || '3 minutes');
+  const [reuploadWindowShortLabel, setReuploadWindowShortLabel] = useState(
+    initialData?.reuploadWindowShortLabel || '3 min'
+  );
 
   const yearOptions = useMemo(() => buildAcademicYearOptions(), []);
   const selectedCourse = courses.find((course) => course.courseCode === selectedCourseCode) || null;
@@ -107,8 +135,8 @@ export default function NotesUploadPage() {
       setTimeRemaining(timers);
 
       setSelectedCourseCode((current) => {
-        if (preselectedCourse && loaded.some((course) => course.courseCode === preselectedCourse)) {
-          return preselectedCourse;
+        if (selectedPrefill && loaded.some((course) => course.courseCode === selectedPrefill)) {
+          return selectedPrefill;
         }
         if (current && loaded.some((course) => course.courseCode === current)) {
           return current;
@@ -123,11 +151,12 @@ export default function NotesUploadPage() {
     } finally {
       setLoading(false);
     }
-  }, [preselectedCourse]);
+  }, [selectedPrefill]);
 
   useEffect(() => {
+    if (initialData) return;
     void fetchMaterials();
-  }, [fetchMaterials]);
+  }, [fetchMaterials, initialData]);
 
   useEffect(() => {
     const interval = setInterval(() => {

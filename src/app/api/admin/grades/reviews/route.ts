@@ -36,11 +36,20 @@ export async function GET(request: Request) {
   const dateTo = url.searchParams.get('dateTo') || undefined;
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1);
   const pageSize = Math.min(50, Math.max(1, parseInt(url.searchParams.get('pageSize') || '25', 10) || 25));
+  const includeStats = url.searchParams.get('includeStats') === 'true';
 
-  const [listResult, stats] = await Promise.all([
-    listAdminReviewRequests(statusFilter, { search, risk, priority, assignedTo, dateFrom, dateTo, page, pageSize }),
-    fetchAdminReviewStats(),
-  ]);
+  const listResult = await listAdminReviewRequests(statusFilter, {
+    search,
+    risk,
+    priority,
+    assignedTo,
+    dateFrom,
+    dateTo,
+    page,
+    pageSize,
+  });
+
+  const stats = includeStats ? await fetchAdminReviewStats() : null;
 
   if (!listResult.ok) {
     console.error('Admin review list fetch error:', listResult.error);

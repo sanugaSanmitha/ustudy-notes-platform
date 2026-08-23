@@ -9,27 +9,9 @@ import {
   getMaterialStateLabel,
 } from '@/lib/materials/course-card-styles';
 import { cn } from '@/lib/utils';
+import type { CourseMaterialInfo, CourseWithMaterial } from '@/lib/materials/types';
 
-export type CourseMaterialInfo = {
-  id: string;
-  uploadedAt: string;
-  zipFilename: string;
-  zipSizeBytes: number;
-  zipFileNames: string[];
-  version: number;
-  downloadCount: number;
-  isLocked: boolean;
-  timeRemaining: number;
-};
-
-export type CourseWithMaterial = {
-  courseCode: string;
-  courseName: string;
-  grade: string;
-  academicYear: string | null;
-  semester: string | null;
-  material: CourseMaterialInfo | null;
-};
+export type { CourseMaterialInfo, CourseWithMaterial };
 
 type CourseMaterialCardProps = {
   course: CourseWithMaterial;

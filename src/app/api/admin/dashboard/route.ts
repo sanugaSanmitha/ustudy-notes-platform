@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAdminUser } from '@/lib/grades/admin';
-import { fetchAdminReviewStats } from '@/lib/grades/admin-review';
-import { fetchQueueSummary, fetchRecentReviewActions } from '@/lib/grades/admin-audit';
-import { fetchTodayActivity } from '@/lib/grades/admin-summary';
+import { getAdminDashboardData } from '@/lib/admin/dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,29 +10,11 @@ export async function GET() {
     return NextResponse.json({ error: { code: 'FORBIDDEN', message: auth.message } }, { status: auth.status });
   }
 
-  const [stats, summaryResult, actionsResult, todayActivity] = await Promise.all([
-    fetchAdminReviewStats(),
-    fetchQueueSummary(5),
-    fetchRecentReviewActions(20),
-    fetchTodayActivity(),
-  ]);
-
-  return NextResponse.json(
-    {
-      data: {
-        queue: {
-          waitingAssignment: stats.waitingAssignment ?? 0,
-          pending: stats.pending,
-          inReview: stats.reviewing,
-          waitingStudent: stats.waitingStudent ?? 0,
-          pendingReassignment: stats.pendingReassignment ?? 0,
-          escalated: stats.escalated ?? 0,
-        },
-        todayActivity,
-        queueSummary: summaryResult.ok ? summaryResult.requests : [],
-        recentActions: actionsResult.ok ? actionsResult.actions : [],
-      },
-    },
-    { status: 200 }
-  );
+  try {
+    const data = await getAdminDashboardData();
+    return NextResponse.json({ data }, { status: 200 });
+  } catch (error) {
+    console.error('Admin dashboard error:', error);
+    return NextResponse.json({ error: { code: 'FETCH_ERROR', message: 'Failed to load dashboard.' } }, { status: 500 });
+  }
 }

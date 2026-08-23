@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
-import { HomeGuestActions } from '@/components/marketplace/HomeGuestActions';
+import { HomeDecorCircles } from '@/components/marketplace/HomeDecorCircles';
+import { HomeHero } from '@/components/marketplace/HomeHero';
 import { MarketplaceSection } from '@/components/marketplace/MarketplaceSection';
 import { MarketplaceSkeleton } from '@/components/marketplace/MarketplaceSkeleton';
 
@@ -7,20 +8,15 @@ export const revalidate = 60;
 
 export default function HomePage() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <section className="mb-10">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-          Find course notes from University students
-        </h1>
-        <p className="mt-3 max-w-2xl text-lg text-slate-500">
-          Browse verified notes by course, semester, and grade. Buy securely and download instantly.
-        </p>
-        <HomeGuestActions />
-      </section>
+    <div className="relative min-h-full bg-white">
+      <HomeDecorCircles />
+      <div className="relative z-10 mx-auto min-w-0 max-w-6xl px-4 py-6 sm:py-10">
+        <HomeHero />
 
-      <Suspense fallback={<MarketplaceSkeleton />}>
-        <MarketplaceSection />
-      </Suspense>
+        <Suspense fallback={<MarketplaceSkeleton />}>
+          <MarketplaceSection />
+        </Suspense>
+      </div>
     </div>
   );
 }

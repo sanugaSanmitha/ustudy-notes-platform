@@ -3,11 +3,19 @@ const DEFAULT_MAX_FILE_SIZE_MB = process.env.NODE_ENV === 'production' ? 20 : 10
 const DEFAULT_MAX_PARSE_RETRIES = process.env.NODE_ENV === 'production' ? 2 : 10;
 const DEFAULT_SIGNED_URL_EXPIRES_SECONDS = 60 * 10;
 const DEFAULT_REJECT_RETENTION_DAYS = 30;
-const DEFAULT_REUPLOAD_COOLDOWN_HOURS = 1;
+const DEFAULT_REUPLOAD_COOLDOWN_HOURS = 0;
 
 function readPositiveInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(String(value || ''), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function readNonNegativeInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
     return fallback;
   }
   return parsed;
@@ -22,9 +30,12 @@ export const gradeVerificationConfig = {
     DEFAULT_SIGNED_URL_EXPIRES_SECONDS
   ),
   rejectedRetentionDays: readPositiveInt(process.env.GRADE_REJECT_RETENTION_DAYS, DEFAULT_REJECT_RETENTION_DAYS),
-  reuploadCooldownHours: readPositiveInt(process.env.GRADE_REUPLOAD_COOLDOWN_HOURS, DEFAULT_REUPLOAD_COOLDOWN_HOURS),
+  reuploadCooldownHours: readNonNegativeInt(
+    process.env.GRADE_REUPLOAD_COOLDOWN_HOURS,
+    DEFAULT_REUPLOAD_COOLDOWN_HOURS
+  ),
   reuploadCooldownMs:
-    readPositiveInt(process.env.GRADE_REUPLOAD_COOLDOWN_HOURS, DEFAULT_REUPLOAD_COOLDOWN_HOURS) * 60 * 60 * 1000,
+    readNonNegativeInt(process.env.GRADE_REUPLOAD_COOLDOWN_HOURS, DEFAULT_REUPLOAD_COOLDOWN_HOURS) * 60 * 60 * 1000,
 };
 
 export function formatReuploadCooldownRemaining(remainingMs: number) {
@@ -44,4 +55,13 @@ export function computeRejectedRetentionUntil(nowIso = new Date().toISOString())
   const now = new Date(nowIso);
   now.setUTCDate(now.getUTCDate() + gradeVerificationConfig.rejectedRetentionDays);
   return now.toISOString();
+}
+
+export const STUDENT_CANCELLED_REVIEWER_NOTE = 'Cancelled by you before review was completed.';
+
+export function isStudentCancelledVerification(input: {
+  status?: string | null;
+  reviewer_note?: string | null;
+}) {
+  return input.status === 'rejected' && input.reviewer_note === STUDENT_CANCELLED_REVIEWER_NOTE;
 }

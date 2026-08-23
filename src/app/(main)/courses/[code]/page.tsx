@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { getGradeTier, getGradeTierGradient } from '@/lib/materials/grade-tiers';
 import { getCoursesByCode } from '@/lib/courses/catalog';
+import { getServerT } from '@/lib/i18n/server-translate';
 import { formatGradeRange, formatRelativeTime } from '@/lib/notes/listing-utils';
 import { getPublishedListingsForCourse } from '@/lib/notes/marketplace';
 
@@ -16,6 +17,7 @@ type PageProps = {
 };
 
 export default async function CourseDetailPage({ params }: PageProps) {
+  const t = await getServerT();
   const courseCode = decodeURIComponent(params.code);
 
   const [result, listings] = await Promise.all([
@@ -27,10 +29,10 @@ export default async function CourseDetailPage({ params }: PageProps) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-8">
         <Link href="/courses" className="text-sm text-blue-600 hover:underline">
-          ← Back to courses
+          {t('coursesBackToCourses')}
         </Link>
         <Card className="mt-6 p-8 text-center text-sm text-red-600">
-          Course catalog is not ready. Run docs/migrations/019_courses_catalog.sql and npm run seed:courses.
+          {t('coursesCatalogNotReady')}
         </Card>
       </div>
     );
@@ -47,7 +49,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <Link href="/" className="text-sm text-blue-600 hover:underline">
-        ← Back to home
+        {t('coursesBackToHome')}
       </Link>
 
       <section className="mt-4 mb-8">
@@ -61,30 +63,33 @@ export default async function CourseDetailPage({ params }: PageProps) {
               <div className="mt-4 flex flex-wrap gap-3 text-sm text-slate-600">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5">
                   <Users className="size-4" />
-                  {sellerCount} seller{sellerCount === 1 ? '' : 's'}
+                  {sellerCount} {sellerCount === 1 ? t('coursesSeller') : t('coursesSellers')}
                 </span>
                 <span className="rounded-full bg-slate-100 px-3 py-1.5">
-                  {listings.length} material{listings.length === 1 ? '' : 's'}
+                  {listings.length}{' '}
+                  {listings.length === 1 ? t('coursesMaterial') : t('coursesMaterials')}
                 </span>
                 {gradeRangeLabel && (
-                  <span className="rounded-full bg-slate-100 px-3 py-1.5">Grades {gradeRangeLabel}</span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5">
+                    {t('coursesGrades')} {gradeRangeLabel}
+                  </span>
                 )}
                 {latestListingAt && (
                   <span className="rounded-full bg-slate-100 px-3 py-1.5">
-                    Newest {formatRelativeTime(latestListingAt)}
+                    {t('coursesNewest')} {formatRelativeTime(latestListingAt)}
                   </span>
                 )}
               </div>
             )}
           </div>
           <Button asChild variant="outline">
-            <Link href="/register">Become a seller</Link>
+            <Link href="/register">{t('homeBecomeSeller')}</Link>
           </Button>
         </div>
 
         {result.courses.length > 1 && (
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p className="font-medium">Multiple catalog entries for this code</p>
+            <p className="font-medium">{t('coursesMultipleEntries')}</p>
             <ul className="mt-2 list-disc pl-5">
               {result.courses.map((course) => (
                 <li key={course.courseTitle}>{course.courseTitle}</li>
@@ -95,7 +100,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
       </section>
 
       <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Grade tier legend</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">{t('coursesGradeTierLegend')}</h2>
         <div className="flex flex-wrap gap-2">
           {(['A+', 'A', 'A-', 'B+', 'B', 'B-'] as const).map((grade) => {
             const tier = getGradeTier(grade);
@@ -117,9 +122,9 @@ export default async function CourseDetailPage({ params }: PageProps) {
           <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-blue-50 text-2xl">
             📚
           </div>
-          <h3 className="text-lg font-medium text-slate-900">No notes yet for this course</h3>
+          <h3 className="text-lg font-medium text-slate-900">{t('coursesNoNotesTitle')}</h3>
           <p className="mt-2 max-w-md text-sm text-slate-500">
-            Verified sellers can upload notes once they pass grade verification for {result.primary.courseCode}.
+            {t('coursesNoNotesBody').replace('{code}', result.primary.courseCode)}
           </p>
         </Card>
       ) : (

@@ -62,6 +62,14 @@ export function formatRelativeTime(isoDate: string): string {
   return date.toLocaleDateString('en-HK', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+export function formatListingDate(isoDate: string): string {
+  return new Date(isoDate).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export function sortListings<T extends { grade: string; price_hkd: number; created_at: string }>(
   listings: T[],
   sort: ListingSortOption

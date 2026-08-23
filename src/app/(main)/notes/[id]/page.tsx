@@ -1,15 +1,18 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { Check, FileText, ShieldCheck } from 'lucide-react';
+import { AddToCartButton } from '@/components/cart/AddToCartButton';
+import { BuyNowOnReturn } from '@/components/cart/BuyNowOnReturn';
+import { ListingPurchasePanel, PurchaseDownloadButton } from '@/components/notes/ListingPurchasePanel';
 import { GradeBadgeCompact } from '@/components/marketplace/GradeBadgeCompact';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { getAuthIdentity } from '@/lib/auth/session';
 import { getCoursesByCode } from '@/lib/courses/catalog';
 import { formatRelativeTime } from '@/lib/notes/listing-utils';
 import { extractMaterialTags } from '@/lib/notes/material-tags';
 import { getPublishedListingById } from '@/lib/notes/marketplace';
-
-export const revalidate = 60;
+import { userHasPaidListing } from '@/lib/orders/access';
 
 type PageProps = {
   params: { id: string };
@@ -25,9 +28,16 @@ export default async function NoteListingDetailPage({ params }: PageProps) {
   const catalog = await getCoursesByCode(listing.course_code);
   const tags = extractMaterialTags(listing.file_names || []);
   const fileNames = listing.file_names || [];
+  const identity = await getAuthIdentity();
+  const owned = identity
+    ? listing.user_id === identity.id || (await userHasPaidListing(identity.id, listing.id))
+    : false;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
+      <Suspense fallback={null}>
+        <BuyNowOnReturn listingId={listing.id} />
+      </Suspense>
       <Link href={`/courses/${listing.course_code}`} className="text-sm text-blue-600 hover:underline">
         ← Back to {listing.course_code}
       </Link>
@@ -56,8 +66,15 @@ export default async function NoteListingDetailPage({ params }: PageProps) {
             </Card>
           )}
 
-          <Card className="mt-6 p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Contains</h2>
+          <Card className={`mt-6 p-5 ${owned ? 'border-emerald-200 bg-emerald-50/40' : ''}`}>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              {owned ? 'Unlocked files' : 'Contains'}
+            </h2>
+            {owned ? (
+              <p className="mt-2 text-sm text-emerald-800">
+                Payment is confirmed. The full note pack stays unlocked in your account — download anytime.
+              </p>
+            ) : null}
             {tags.length > 0 && (
               <ul className="mt-4 flex flex-wrap gap-2">
                 {tags.map((tag) => (
@@ -90,6 +107,11 @@ export default async function NoteListingDetailPage({ params }: PageProps) {
                 </ul>
               </div>
             )}
+            {owned ? (
+              <div className="mt-5">
+                <PurchaseDownloadButton listingId={listing.id} />
+              </div>
+            ) : null}
           </Card>
 
           <Card className="mt-6 p-5">
@@ -113,8 +135,10 @@ export default async function NoteListingDetailPage({ params }: PageProps) {
 
         <div className="lg:sticky lg:top-24 lg:self-start">
           <Card className="p-6" id="buy">
-            <p className="text-sm text-slate-500">Price</p>
-            <p className="mt-1 text-4xl font-bold text-slate-900">HK${Number(listing.price_hkd).toFixed(0)}</p>
+            <p className="text-sm text-slate-500">{owned ? 'Your note' : 'Price'}</p>
+            <p className="mt-1 text-4xl font-bold text-slate-900">
+              {owned ? 'Unlocked' : `HK$${Number(listing.price_hkd).toFixed(0)}`}
+            </p>
             <dl className="mt-5 space-y-3 text-sm text-slate-600">
               <div className="flex justify-between gap-4">
                 <dt>Seller</dt>
@@ -134,12 +158,24 @@ export default async function NoteListingDetailPage({ params }: PageProps) {
               </div>
             </dl>
 
-            <Button className="mt-6 w-full bg-blue-600 hover:bg-blue-700" disabled>
-              Buy now — checkout coming soon
-            </Button>
-            <p className="mt-3 text-center text-xs text-slate-400">
-              Secure payment and instant download will be available here.
-            </p>
+            <ListingPurchasePanel
+              listingId={listing.id}
+              initialOwned={owned}
+              buySlot={
+                <>
+                  <AddToCartButton
+                    listingId={listing.id}
+                    label="Buy now"
+                    redirectTo="/checkout"
+                    className="mt-6 w-full bg-blue-600 hover:bg-blue-700"
+                  />
+                  <AddToCartButton listingId={listing.id} variant="outline" className="mt-3 w-full" />
+                  <p className="mt-3 text-center text-xs text-slate-400">
+                    Pay with FPS. Notes unlock after we confirm the transfer.
+                  </p>
+                </>
+              }
+            />
           </Card>
         </div>
       </div>

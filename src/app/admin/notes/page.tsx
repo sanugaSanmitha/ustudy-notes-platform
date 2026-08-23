@@ -131,7 +131,7 @@ export default function AdminNotesPage() {
 
   return (
     <AdminShell
-      title="Note Listings"
+      title="Note Verification"
       description="Review seller note submissions, preview ZIP contents, and publish or reject listings."
       actions={
         <Button type="button" variant="outline" size="sm" onClick={() => fetchListings(true)} disabled={refreshing}>

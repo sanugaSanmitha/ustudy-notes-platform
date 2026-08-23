@@ -1,25 +1,28 @@
-import Link from 'next/link';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { redirect } from 'next/navigation';
+import { CartClient } from '@/components/cart/CartClient';
+import { getAuthIdentity } from '@/lib/auth/session';
+import { getCartSummary } from '@/lib/cart/repository';
+import { getServerT } from '@/lib/i18n/server-translate';
 
-export default function CartPage() {
+export default async function CartPage() {
+  const t = await getServerT();
+  const identity = await getAuthIdentity();
+  if (!identity) {
+    redirect('/login?next=/cart');
+  }
+
+  let initialCart = null;
+  try {
+    initialCart = await getCartSummary(identity.id);
+  } catch (error) {
+    console.error('Cart page load error:', error);
+  }
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="text-3xl font-bold text-slate-900">Cart</h1>
-      <p className="mt-2 text-slate-600">Review note listings before checkout.</p>
-
-      <Card className="mt-6 flex flex-col items-center justify-center border-dashed px-6 py-16 text-center">
-        <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-blue-50 text-2xl">
-          🛒
-        </div>
-        <h2 className="text-lg font-medium text-slate-900">Your cart is empty</h2>
-        <p className="mt-2 max-w-md text-sm text-slate-500">
-          Browse course notes and add materials here when checkout is enabled.
-        </p>
-        <Button asChild className="mt-6 bg-blue-600 hover:bg-blue-700">
-          <Link href="/courses">Browse courses</Link>
-        </Button>
-      </Card>
+    <div className="mx-auto max-w-4xl px-4 py-8">
+      <h1 className="text-3xl font-bold text-slate-900">{t('cartTitle')}</h1>
+      <p className="mt-2 text-slate-600">{t('cartPageSubtitle')}</p>
+      <CartClient initialCart={initialCart} />
     </div>
   );
 }

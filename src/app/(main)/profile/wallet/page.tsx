@@ -1,5 +1,7 @@
 import AccountPlaceholderPage from '@/components/account/AccountPlaceholderPage';
+import { getServerT } from '@/lib/i18n/server-translate';
 
-export default function WalletPage() {
-  return <AccountPlaceholderPage title="Wallet" description="Wallet balance and payout settings will appear here." />;
+export default async function WalletPage() {
+  const t = await getServerT();
+  return <AccountPlaceholderPage title={t('lockerWallet')} description={t('placeholderWalletDesc')} />;
 }

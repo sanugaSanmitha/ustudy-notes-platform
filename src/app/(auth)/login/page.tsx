@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -6,24 +5,55 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PasswordInput } from '@/components/ui/password-input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { AuthIconField } from '@/components/auth/AuthIconField';
+import { AuthPasswordField } from '@/components/auth/AuthPasswordField';
+import {
+  AuthSplitShell,
+  authFieldClassName,
+  authLabelClassName,
+  authOutlineButtonClassName,
+  authPrimaryButtonClassName,
+} from '@/components/auth/AuthSplitShell';
 import { createClient } from '@/lib/supabase/client';
 import { getPostLoginPath } from '@/lib/auth/landing';
+import { useLocale } from '@/components/i18n/LocaleProvider';
+import { cn } from '@/lib/utils';
+
+function FieldError({ message }: { message: string }) {
+  return (
+    <p className="flex items-center gap-1.5 text-[13px] leading-5 text-[#d93025]">
+      <span
+        aria-hidden
+        className="inline-flex size-[14px] shrink-0 items-center justify-center rounded-full border border-current text-[9px] font-semibold leading-none"
+      >
+        !
+      </span>
+      {message}
+    </p>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useLocale();
   const nextPath = searchParams.get('next');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [errorType, setErrorType] = useState<'none' | 'verification' | 'credentials' | 'general'>(
     'none'
   );
+  const [failedAttempts, setFailedAttempts] = useState(0);
   const [loading, setLoading] = useState(false);
+  const hasCredentialError = errorType === 'credentials' || errorType === 'general';
+  const hasVerificationError = errorType === 'verification';
+  const showResetPassword = failedAttempts >= 3;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -31,6 +61,13 @@ export default function LoginPage() {
       ...prev,
       [name]: value,
     }));
+    if (name === 'email') {
+      setFailedAttempts(0);
+    }
+    if (error) {
+      setError('');
+      setErrorType('none');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,7 +77,8 @@ export default function LoginPage() {
     setLoading(true);
 
     if (!formData.email || !formData.password) {
-      setError('Please enter email and password');
+      setError(t('authEnterEmailPassword'));
+      setErrorType('credentials');
       setLoading(false);
       return;
     }
@@ -58,10 +96,11 @@ export default function LoginPage() {
         const needsVerification = signInError.message.includes('Email not confirmed');
 
         if (needsVerification) {
-          setError('Please verify your email before logging in.');
+          setError(t('authVerifyEmailFirst'));
           setErrorType('verification');
         } else {
-          setError('Invalid email or password.');
+          setFailedAttempts((count) => count + 1);
+          setError(t('authInvalidCredentials'));
           setErrorType('credentials');
         }
 
@@ -78,7 +117,8 @@ export default function LoginPage() {
       } = await supabase.auth.getSession();
 
       if (!session?.user) {
-        setError('Login succeeded but session is not ready yet. Please try again.');
+        setError(t('authSessionNotReady'));
+        setErrorType('general');
         setLoading(false);
         return;
       }
@@ -97,7 +137,8 @@ export default function LoginPage() {
       router.replace(destination);
       router.refresh();
     } catch (err) {
-      setError('Invalid email or password.');
+      setFailedAttempts((count) => count + 1);
+      setError(t('authInvalidCredentials'));
       setErrorType('general');
       console.error('Login error:', err);
       setLoading(false);
@@ -105,51 +146,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f7] flex items-center justify-center px-4">
-      <div className="relative w-full max-w-md">
-        <Link
-          href="/"
-          aria-label="Close and go to homepage"
-          className="absolute right-0 top-0 rounded-md px-3 py-1 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-        >
-          X
-        </Link>
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Log In</h1>
-          <p className="text-slate-500">Access your Ustudy Notes account</p>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg space-y-2">
-            <p className="text-red-700 text-sm">{error}</p>
-            {errorType === 'verification' && formData.email && (
-              <Link
-                href={`/verify-email?email=${encodeURIComponent(formData.email.trim().toLowerCase())}`}
-                className="text-sm text-blue-600 hover:underline font-medium"
-              >
-                Resend verification email
-              </Link>
-            )}
-            {(errorType === 'credentials' || errorType === 'general') && (
-              <div className="space-y-2">
-                <p className="text-sm text-red-700">
-                  Forgot your password?
-                </p>
-                <Button asChild variant="outline" size="sm" className="border-red-200">
-                  <Link href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}>
-                    Reset Password
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
-              Email Address
-            </Label>
+    <AuthSplitShell title={t('authWelcomeTitle')} subtitle={t('authSignInSubtitle')}>
+      <form onSubmit={handleSubmit} className="space-y-2.5">
+        <div className="space-y-1">
+          <Label htmlFor="email" className={authLabelClassName}>
+            {t('authEmail')}
+          </Label>
+          <AuthIconField iconSrc="/icons/auth-email.svg" iconWidth={20} iconHeight={16}>
             <Input
               id="email"
               type="email"
@@ -157,50 +160,82 @@ export default function LoginPage() {
               value={formData.email}
               onChange={handleChange}
               placeholder="your.email@schooldomain.hk"
-              className="w-full"
+              className={cn(authFieldClassName, hasCredentialError && 'border border-[#d93025]')}
               disabled={loading}
+              autoComplete="email"
             />
-          </div>
+          </AuthIconField>
+        </div>
 
-          <div>
-            <Label htmlFor="password" className="block text-sm font-medium text-slate-700">
-              Password
-            </Label>
-            <PasswordInput
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="••••••••"
-              className="w-full"
-              disabled={loading}
-            />
-            <div className="mt-2 text-right">
-              <Link
-                href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}
-                className="text-sm text-blue-600 hover:underline font-medium"
-              >
-                Forgot your password?
-              </Link>
-            </div>
-          </div>
-
-          <Button
-            type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+        <div className="space-y-1">
+          <Label htmlFor="password" className={authLabelClassName}>
+            {t('authPassword')}
+          </Label>
+          <AuthPasswordField
+            id="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="••••••••"
             disabled={loading}
-          >
-            {loading ? 'Logging in...' : 'Log In'}
-          </Button>
-        </form>
+            autoComplete="current-password"
+            className={hasCredentialError ? 'border border-[#d93025]' : undefined}
+          />
+          <div className="min-h-4">
+            {hasCredentialError ? <FieldError message={error} /> : null}
+            {hasVerificationError ? <FieldError message={error} /> : null}
+            {hasVerificationError && formData.email ? (
+              <Link
+                href={`/verify-email?email=${encodeURIComponent(formData.email.trim().toLowerCase())}`}
+                className="mt-0.5 inline-block text-[13px] font-medium text-[#004ac6] hover:underline"
+              >
+                {t('authResendVerification')}
+              </Link>
+            ) : null}
+          </div>
+          <div className="flex justify-end">
+            <Link
+              href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}
+              className={cn(
+                'text-xs font-semibold tracking-[0.6px] hover:underline',
+                hasCredentialError || showResetPassword ? 'text-[#d93025]' : 'text-[#004ac6]'
+              )}
+            >
+              {showResetPassword ? t('authResetPassword') : t('authForgotPassword')}
+            </Link>
+          </div>
+        </div>
 
-        <p className="text-center text-slate-600 text-sm mt-6">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="text-blue-600 hover:underline font-medium">
-            Register
-          </Link>
-        </p>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="rememberMe"
+            checked={rememberMe}
+            onCheckedChange={(checked) => setRememberMe(checked === true)}
+            disabled={loading}
+            className="border-[#c3c6d7] bg-white"
+          />
+          <Label htmlFor="rememberMe" className="cursor-pointer text-sm font-normal text-[#505f76]">
+            {t('authRememberMe')}
+          </Label>
+        </div>
+
+        <Button type="submit" className={authPrimaryButtonClassName} disabled={loading}>
+          {loading ? t('authLoggingIn') : t('authLogin')}
+        </Button>
+      </form>
+
+      <div className="mt-3 flex items-center gap-3">
+        <div className="h-px flex-1 bg-[#c3c6d7]" />
+        <span className="text-xs font-semibold tracking-[0.6px] text-[#737686]">{t('authOr')}</span>
+        <div className="h-px flex-1 bg-[#c3c6d7]" />
       </div>
-    </div>
+
+      <div className="mt-3 space-y-2">
+        <p className="text-center text-sm leading-5 text-[#505f76]">{t('authNewToUstudy')}</p>
+        <Button asChild variant="outline" className={authOutlineButtonClassName}>
+          <Link href="/register">{t('authCreateAccount')}</Link>
+        </Button>
+      </div>
+    </AuthSplitShell>
   );
 }

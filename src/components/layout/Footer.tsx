@@ -1,55 +1,75 @@
+'use client';
+
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
+import { useLocale } from '@/components/i18n/LocaleProvider';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 import { STAFF_EMAILS } from '@/lib/auth/staff-emails';
 
-export async function Footer() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const isLoggedIn = Boolean(user);
+export function Footer() {
+  const { t } = useLocale();
 
   return (
-    <footer className="mt-auto border-t border-slate-200 bg-slate-50">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between">
+    <footer className="mt-auto border-t border-[rgba(195,198,215,0.2)] bg-white">
+      <div className="mx-auto grid max-w-[1280px] gap-6 px-4 py-12 sm:grid-cols-2 lg:grid-cols-4 lg:px-10">
         <div>
-          <p className="font-semibold text-slate-900">Ustudy Notes Platform</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Secure note trading for Ustudy students.
+          <BrandLogo tone="ink" />
+          <p className="mt-4 max-w-[320px] text-sm font-medium leading-5 tracking-[0.14px] text-[#434655]">
+            {t('footerTagline1')}
+            <br />
+            {t('footerTagline2')}
           </p>
-          <p className="mt-2 text-sm text-slate-600">
-            Contact:{' '}
-            {STAFF_EMAILS.map((email, index) => (
-              <span key={email}>
-                {index > 0 ? ' | ' : null}
-                <a href={`mailto:${email}`} className="hover:text-blue-600">
-                  {email}
-                </a>
-              </span>
-            ))}
+          <p className="mt-4 text-xs font-medium leading-4 tracking-[0.14px] text-[#737686]">
+            © {new Date().getFullYear()} {t('footerCopyright')}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-4 text-sm text-slate-600">
-          {!isLoggedIn && (
-            <>
-              <Link href="/register" className="hover:text-blue-600">
-                Register
-              </Link>
-              <Link href="/login" className="hover:text-blue-600">
-                Log in
-              </Link>
-            </>
-          )}
-          <Link href="/profile" className="hover:text-blue-600">
-            My Account
-          </Link>
+        <div>
+          <p className="pb-2 text-sm font-semibold tracking-[0.14px] text-[#191b23]">{t('footerPlatform')}</p>
+          <div className="mt-3 flex flex-col gap-3 text-sm font-medium tracking-[0.14px] text-[#434655]">
+            <Link href="/" className="hover:text-[#004ac6]">
+              {t('footerBrowse')}
+            </Link>
+            <Link href="/courses" className="hover:text-[#004ac6]">
+              {t('navCourses')}
+            </Link>
+            <Link href="/cart" className="hover:text-[#004ac6]">
+              {t('navCart')}
+            </Link>
+          </div>
         </div>
-      </div>
 
-      <div className="border-t border-slate-200 px-4 py-4 text-center text-xs text-slate-400">
-        © {new Date().getFullYear()} Ustudy Notes Platform
+        <div>
+          <p className="pb-2 text-sm font-semibold tracking-[0.14px] text-[#191b23]">{t('footerPolicies')}</p>
+          <div className="mt-3 flex flex-col gap-3 text-sm font-medium tracking-[0.14px] text-[#434655]">
+            <Link href="/privacy" className="hover:text-[#004ac6]">
+              {t('footerPrivacy')}
+            </Link>
+            <Link href="/terms" className="hover:text-[#004ac6]">
+              {t('footerTermsOfUse')}
+            </Link>
+            <Link href="/profile" className="hover:text-[#004ac6]">
+              {t('footerMyAccount')}
+            </Link>
+          </div>
+        </div>
+
+        <div>
+          <p className="pb-2 text-sm font-semibold tracking-[0.14px] text-[#191b23]">{t('footerHelp')}</p>
+          <div className="mt-3 flex flex-col gap-3 text-sm font-medium tracking-[0.14px] text-[#434655]">
+            <a href={`mailto:${STAFF_EMAILS[0]}`} className="hover:text-[#004ac6]">
+              {t('footerSupport')}
+            </a>
+            <a href={`mailto:${STAFF_EMAILS[0]}`} className="hover:text-[#004ac6]">
+              {t('footerContactUs')}
+            </a>
+            <Link href="/terms" className="hover:text-[#004ac6]">
+              {t('footerTermsOfService')}
+            </Link>
+            <Link href="/privacy" className="hover:text-[#004ac6]">
+              {t('footerPrivacyPolicy')}
+            </Link>
+          </div>
+        </div>
       </div>
     </footer>
   );

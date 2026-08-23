@@ -1,4 +1,9 @@
 import { adminClient } from '@/lib/supabase/admin';
+import {
+  createDailyTrendBuckets,
+  createMonthlyTrendBuckets,
+  monthKey,
+} from '@/lib/admin/analytics-time-buckets';
 import type { SummaryDateRange } from '@/lib/grades/summary-date-range';
 
 export async function fetchRecentReviewActions(limit = 20) {
@@ -74,13 +79,35 @@ const STATUS_CHART_LABELS: Record<string, string> = {
   escalated: 'Escalated',
 };
 
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function monthLabel(key: string) {
-  const [year, month] = key.split('-');
-  return new Date(Number(year), Number(month) - 1, 1).toLocaleString('en-US', { month: 'short' });
+function applyTrendRowToBuckets(
+  row: { status: string; created_at: string; resolved_at: string | null },
+  monthBuckets: ReturnType<typeof createMonthlyTrendBuckets>,
+  dayBuckets: ReturnType<typeof createDailyTrendBuckets>
+) {
+  const createdDayKey = new Date(row.created_at).toISOString().slice(0, 10);
+  const createdMonthKey = monthKey(new Date(row.created_at));
+  const monthBucket = monthBuckets.get(createdMonthKey);
+  const dayBucket = dayBuckets.get(createdDayKey);
+  if (monthBucket && dayBucket && !['approved', 'rejected'].includes(row.status)) {
+    monthBucket.pending += 1;
+    dayBucket.pending += 1;
+  }
+  if (row.resolved_at && (row.status === 'approved' || row.status === 'rejected')) {
+    const resolvedDayKey = new Date(row.resolved_at).toISOString().slice(0, 10);
+    const resolvedMonthKey = monthKey(new Date(row.resolved_at));
+    const resolvedMonthBucket = monthBuckets.get(resolvedMonthKey);
+    const resolvedDayBucket = dayBuckets.get(resolvedDayKey);
+    if (resolvedMonthBucket && resolvedDayBucket) {
+      if (row.status === 'approved') {
+        resolvedMonthBucket.approved += 1;
+        resolvedDayBucket.approved += 1;
+      }
+      if (row.status === 'rejected') {
+        resolvedMonthBucket.rejected += 1;
+        resolvedDayBucket.rejected += 1;
+      }
+    }
+  }
 }
 
 export async function fetchVerificationAnalytics(range?: SummaryDateRange) {
@@ -140,45 +167,11 @@ export async function fetchVerificationAnalytics(range?: SummaryDateRange) {
     }))
     .sort((a, b) => b.value - a.value);
 
-  const monthBuckets = new Map<
-    string,
-    {
-      month: string;
-      approved: number;
-      rejected: number;
-      pending: number;
-      reviewing: number;
-      escalated: number;
-    }
-  >();
-  for (let i = 0; i < 6; i += 1) {
-    const date = new Date(sixMonthsAgo);
-    date.setMonth(sixMonthsAgo.getMonth() + i);
-    const key = monthKey(date);
-    monthBuckets.set(key, {
-      month: monthLabel(key),
-      approved: 0,
-      rejected: 0,
-      pending: 0,
-      reviewing: 0,
-      escalated: 0,
-    });
-  }
+  const monthBuckets = createMonthlyTrendBuckets(sixMonthsAgo);
+  const dayBuckets = createDailyTrendBuckets(sixMonthsAgo, rangeEnd);
 
   for (const row of trendResult.data || []) {
-    const createdKey = monthKey(new Date(row.created_at));
-    const bucket = monthBuckets.get(createdKey);
-    if (bucket && !['approved', 'rejected'].includes(row.status)) {
-      bucket.pending += 1;
-    }
-    if (row.resolved_at && (row.status === 'approved' || row.status === 'rejected')) {
-      const resolvedKey = monthKey(new Date(row.resolved_at));
-      const resolvedBucket = monthBuckets.get(resolvedKey);
-      if (resolvedBucket) {
-        if (row.status === 'approved') resolvedBucket.approved += 1;
-        if (row.status === 'rejected') resolvedBucket.rejected += 1;
-      }
-    }
+    applyTrendRowToBuckets(row, monthBuckets, dayBuckets);
   }
 
   const { data: activityRows } = await adminClient
@@ -189,13 +182,19 @@ export async function fetchVerificationAnalytics(range?: SummaryDateRange) {
   for (const row of activityRows || []) {
     if (row.review_started_at) {
       const key = monthKey(new Date(row.review_started_at));
+      const dayKey = new Date(row.review_started_at).toISOString().slice(0, 10);
       const bucket = monthBuckets.get(key);
+      const dayBucket = dayBuckets.get(dayKey);
       if (bucket) bucket.reviewing += 1;
+      if (dayBucket) dayBucket.reviewing += 1;
     }
     if (row.escalated_at) {
       const key = monthKey(new Date(row.escalated_at));
+      const dayKey = new Date(row.escalated_at).toISOString().slice(0, 10);
       const bucket = monthBuckets.get(key);
+      const dayBucket = dayBuckets.get(dayKey);
       if (bucket) bucket.escalated += 1;
+      if (dayBucket) dayBucket.escalated += 1;
     }
   }
 
@@ -248,6 +247,7 @@ export async function fetchVerificationAnalytics(range?: SummaryDateRange) {
     analytics: {
       statusDistribution,
       monthlyData: Array.from(monthBuckets.values()),
+      dailyData: Array.from(dayBuckets.values()),
       weeklyData: Array.from(weeklyBuckets.values()),
       summary,
     },

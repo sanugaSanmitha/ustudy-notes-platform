@@ -130,7 +130,7 @@ export async function listAdminReviewRequests(
     return query;
   };
 
-  const modernSelect = `id, issue_type, message, external_transcript_url, status, priority, queue, review_started_at, reviewed_by, assigned_to, assigned_at, assigned_by, assigned_by_user_id, reassignment_requested_by, reassignment_reason, reassignment_requested_at, escalated_at, created_at, updated_at, upload_id, user_id, grade_verifications!upload_id(${LIST_VERIFICATION_SELECT}), student:users!user_id(full_name, email), reviewer:users!reviewed_by(full_name, email), assignee:users!assigned_to(full_name, email)`;
+  const modernSelect = `id, issue_type, message, status, priority, queue, reviewed_by, assigned_to, created_at, user_id, grade_verifications!upload_id(${LIST_VERIFICATION_SELECT}), student:users!user_id(full_name, email), reviewer:users!reviewed_by(full_name, email), assignee:users!assigned_to(full_name, email)`;
   const legacySelect = `id, issue_type, message, external_transcript_url, status, created_at, updated_at, upload_id, user_id, grade_verifications!upload_id(${LIST_VERIFICATION_SELECT}), users!user_id(full_name, email)`;
   const minimalSelect = `id, issue_type, message, status, created_at, updated_at, upload_id, user_id, users!user_id(full_name, email)`;
 

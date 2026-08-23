@@ -76,60 +76,94 @@ async function enrichListingsWithGrades(listings: ListingRow[]): Promise<Enriche
   }));
 }
 
-async function fetchPublishedCourseSummaries(): Promise<PublishedCourseSummary[]> {
-  const { data, error } = await adminClient
+type CourseListingStats = {
+  courseCode: string;
+  listingCount: number;
+  sellerCount: number;
+  latestListingAt: string;
+};
+
+async function fetchPublishedCourseListingStats(): Promise<CourseListingStats[]> {
+  const { data, error } = await adminClient.rpc('get_published_course_listing_stats');
+
+  if (!error && Array.isArray(data)) {
+    return (data as Array<{
+      course_code: string;
+      listing_count: number | string;
+      seller_count: number | string;
+      latest_listing_at: string;
+    }>)
+      .map((row) => {
+        const courseCode = normalizeCourseCode(row.course_code);
+        if (!courseCode) return null;
+        return {
+          courseCode,
+          listingCount: Number(row.listing_count) || 0,
+          sellerCount: Number(row.seller_count) || 0,
+          latestListingAt: row.latest_listing_at,
+        };
+      })
+      .filter((row): row is CourseListingStats => row !== null);
+  }
+
+  const { data: rows, error: fallbackError } = await adminClient
     .from('note_listings')
     .select('course_code, user_id, created_at')
     .eq('status', 'published');
 
-  if (error) {
-    if (error.message.includes('relation "public.note_listings" does not exist')) {
+  if (fallbackError) {
+    if (fallbackError.message.includes('relation "public.note_listings" does not exist')) {
       return [];
     }
-    throw error;
+    throw fallbackError;
   }
 
-  const rows = data || [];
-  if (rows.length === 0) {
-    return [];
-  }
+  const byCourse = new Map<string, CourseListingStats & { sellers: Set<string> }>();
+  for (const row of rows || []) {
+    const courseCode = normalizeCourseCode(row.course_code);
+    if (!courseCode) continue;
 
-  const byCourse = new Map<
-    string,
-    { sellers: Set<string>; listingCount: number; latestListingAt: string; userIds: Set<string> }
-  >();
+    const existing = byCourse.get(courseCode);
+    if (!existing) {
+      byCourse.set(courseCode, {
+        courseCode,
+        listingCount: 1,
+        sellerCount: 1,
+        latestListingAt: row.created_at,
+        sellers: new Set([row.user_id]),
+      });
+      continue;
+    }
 
-  for (const row of rows) {
-    const code = normalizeCourseCode(row.course_code);
-    if (!code) continue;
-
-    const existing = byCourse.get(code) || {
-      sellers: new Set<string>(),
-      listingCount: 0,
-      latestListingAt: row.created_at,
-      userIds: new Set<string>(),
-    };
-
-    existing.sellers.add(row.user_id);
-    existing.userIds.add(row.user_id);
     existing.listingCount += 1;
+    existing.sellers.add(row.user_id);
+    existing.sellerCount = existing.sellers.size;
     if (new Date(row.created_at).getTime() > new Date(existing.latestListingAt).getTime()) {
       existing.latestListingAt = row.created_at;
     }
-    byCourse.set(code, existing);
   }
 
-  const courseCodes = Array.from(byCourse.keys());
-  const allUserIds = Array.from(
-    new Set(Array.from(byCourse.values()).flatMap((stats) => Array.from(stats.userIds)))
-  );
+  return Array.from(byCourse.values()).map((row) => ({
+    courseCode: row.courseCode,
+    listingCount: row.listingCount,
+    sellerCount: row.sellerCount,
+    latestListingAt: row.latestListingAt,
+  }));
+}
+
+async function fetchPublishedCourseSummaries(): Promise<PublishedCourseSummary[]> {
+  const stats = await fetchPublishedCourseListingStats();
+  if (stats.length === 0) {
+    return [];
+  }
+
+  const courseCodes = stats.map((row) => row.courseCode);
 
   const [{ data: verifiedGrades }, { data: catalogCourses }] = await Promise.all([
     adminClient
       .from('verified_courses')
-      .select('user_id, course_code, grade')
-      .in('course_code', courseCodes)
-      .in('user_id', allUserIds),
+      .select('course_code, grade')
+      .in('course_code', courseCodes),
     adminClient.from('courses').select('course_code, course_title').in('course_code', courseCodes),
   ]);
 
@@ -146,22 +180,16 @@ async function fetchPublishedCourseSummaries(): Promise<PublishedCourseSummary[]
     gradesByCourse.set(code, grades);
   }
 
-  const summaries: PublishedCourseSummary[] = [];
-
-  for (const [courseCode, stats] of Array.from(byCourse.entries())) {
-    summaries.push({
-      courseCode,
-      courseTitle: titleByCode.get(courseCode) || null,
-      sellerCount: stats.sellers.size,
-      listingCount: stats.listingCount,
-      latestListingAt: stats.latestListingAt,
-      gradeRangeLabel: formatGradeRange(gradesByCourse.get(courseCode) || []),
-    });
-  }
-
-  return summaries.sort(
-    (a, b) => new Date(b.latestListingAt).getTime() - new Date(a.latestListingAt).getTime()
-  );
+  return stats
+    .map((row) => ({
+      courseCode: row.courseCode,
+      courseTitle: titleByCode.get(row.courseCode) || null,
+      sellerCount: row.sellerCount,
+      listingCount: row.listingCount,
+      latestListingAt: row.latestListingAt,
+      gradeRangeLabel: formatGradeRange(gradesByCourse.get(row.courseCode) || []),
+    }))
+    .sort((a, b) => new Date(b.latestListingAt).getTime() - new Date(a.latestListingAt).getTime());
 }
 
 const getCachedPublishedCourseSummaries = unstable_cache(
@@ -203,6 +231,59 @@ const getCachedLatestPublishedListings = unstable_cache(
   { revalidate: MARKETPLACE_REVALIDATE_SECONDS, tags: ['marketplace'] }
 );
 
+const getCachedHomepagePublishListings = unstable_cache(
+  async () => fetchLatestPublishedListings(40),
+  ['homepage-publish-listings'],
+  { revalidate: MARKETPLACE_REVALIDATE_SECONDS, tags: ['marketplace'] }
+);
+
+async function countPublishedNotes() {
+  const { count, error } = await adminClient
+    .from('note_listings')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'published');
+
+  if (error) {
+    return 0;
+  }
+
+  return count || 0;
+}
+
+const getCachedPublishedNotesCount = unstable_cache(
+  countPublishedNotes,
+  ['published-notes-count'],
+  { revalidate: MARKETPLACE_REVALIDATE_SECONDS, tags: ['marketplace'] }
+);
+
+export type CourseListingCount = {
+  courseCode: string;
+  listingCount: number;
+};
+
+const getCachedPublishedCourseListingStats = unstable_cache(
+  fetchPublishedCourseListingStats,
+  ['published-course-listing-stats'],
+  { revalidate: MARKETPLACE_REVALIDATE_SECONDS, tags: ['marketplace'] }
+);
+
+async function fetchPublishedListingCountsByCourse(): Promise<CourseListingCount[]> {
+  const stats = await getCachedPublishedCourseListingStats();
+  return stats
+    .map(({ courseCode, listingCount }) => ({ courseCode, listingCount }))
+    .sort((a, b) => a.courseCode.localeCompare(b.courseCode));
+}
+
+const getCachedPublishedListingCountsByCourse = unstable_cache(
+  fetchPublishedListingCountsByCourse,
+  ['published-listing-counts-by-course'],
+  { revalidate: MARKETPLACE_REVALIDATE_SECONDS, tags: ['marketplace'] }
+);
+
+export async function getPublishedListingCountsByCourse(): Promise<CourseListingCount[]> {
+  return getCachedPublishedListingCountsByCourse();
+}
+
 export async function getLatestPublishedListings(limit = 8): Promise<EnrichedListing[]> {
   if (limit === 8) {
     return getCachedLatestPublishedListings();
@@ -211,18 +292,15 @@ export async function getLatestPublishedListings(limit = 8): Promise<EnrichedLis
 }
 
 export async function getHomepageMarketplaceData() {
-  const [courseSummaries, latestListings] = await Promise.all([
-    getPublishedCourseSummaries(),
-    getLatestPublishedListings(8),
+  const [publishedNotesCount, publishListings] = await Promise.all([
+    getCachedPublishedNotesCount(),
+    getCachedHomepagePublishListings(),
   ]);
-
-  const publishedNotesCount = courseSummaries.reduce((total, course) => total + course.listingCount, 0);
 
   return {
     publishedNotesCount,
-    featuredCourses: courseSummaries.slice(0, 3),
-    courseSummaries,
-    latestListings,
+    latestListings: publishListings.slice(0, 8),
+    publishListings,
   };
 }
 

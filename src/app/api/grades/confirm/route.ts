@@ -27,6 +27,7 @@ const rowSchema = z.object({
 const confirmSchema = z.object({
   verificationId: z.string().uuid(),
   reviewRows: z.array(rowSchema).min(1).max(80),
+  mode: z.enum(['confirm', 'draft']).optional().default('confirm'),
 });
 
 function buildTranscriptId(verificationId: string, createdAt: string) {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { verificationId } = parsedBody.data;
+    const { verificationId, mode } = parsedBody.data;
     const rows = sanitizeCourseReviewRows(await enrichCourseRows(parsedBody.data.reviewRows as CourseReviewRow[]));
     const summary = summarizeReviewRows(rows);
 
@@ -89,6 +90,31 @@ export async function POST(request: NextRequest) {
         { error: { code: 'INVALID_STATE', message: 'This submission cannot be confirmed right now.' } },
         { status: 400 }
       );
+    }
+
+    if (mode === 'draft') {
+      const { error: draftUpdateError } = await adminClient
+        .from('grade_verifications')
+        .update({
+          review_rows: rows,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', verificationId);
+
+      if (draftUpdateError) {
+        console.error('Grade review draft save error:', draftUpdateError);
+        return NextResponse.json(
+          { error: { code: 'UPDATE_ERROR', message: 'Failed to save course rows.' } },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        data: {
+          saved: true,
+          message: 'Course rows saved. You can continue editing or request administrator verification.',
+        },
+      });
     }
 
     if (!summary.hasOnlyGreen) {
