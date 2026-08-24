@@ -70,35 +70,41 @@ export function MainNavbar() {
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-50 bg-white/80 backdrop-blur-[8px]">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 md:hidden">
-          <div className="flex min-w-0 items-center justify-center max-[420px]:justify-start">
+        {isLoggedIn === false ? (
+          <div className="relative px-2 py-2 md:hidden max-[459px]:flex max-[459px]:items-center max-[459px]:justify-end max-[459px]:gap-1.5 min-[460px]:grid min-[460px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] min-[460px]:items-center">
+            <div className="hidden min-[460px]:block" aria-hidden />
             <NavCapsule
               menuOpen={mobileMenuOpen}
               onMenuClick={() => {
                 setProfileOpen(false);
                 setMobileMenuOpen((open) => !open);
               }}
-              className="max-w-full"
+              className="min-[460px]:justify-self-center"
+            />
+            <div className="flex shrink-0 items-center justify-end gap-1">
+              <Button asChild variant="ghost" size="sm" className="h-8 px-1.5 text-[12px] text-[#1f2f66] max-[380px]:px-1">
+                <Link href="/login">{t('navLogin')}</Link>
+              </Button>
+              <Button
+                asChild
+                size="sm"
+                className="h-8 rounded-full bg-[#1f2f66] px-2 text-[12px] text-white hover:bg-[#18244f] hover:text-white max-[380px]:px-1.5"
+              >
+                <Link href="/register">{t('navRegister')}</Link>
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center px-2 py-2 md:hidden">
+            <NavCapsule
+              menuOpen={mobileMenuOpen}
+              onMenuClick={() => {
+                setProfileOpen(false);
+                setMobileMenuOpen((open) => !open);
+              }}
             />
           </div>
-          <div className="flex shrink-0 items-center justify-end gap-1.5 pl-1">
-            <LocaleToggle />
-            {isLoggedIn === false && (
-              <>
-                <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-[#1f2f66]">
-                  <Link href="/login">{t('navLogin')}</Link>
-                </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  className="h-8 rounded-full bg-[#1f2f66] px-2.5 text-white hover:bg-[#18244f] hover:text-white"
-                >
-                  <Link href="/register">{t('navRegister')}</Link>
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
+        )}
 
         <div className="mx-auto hidden max-w-6xl items-center justify-between gap-3 px-4 py-2.5 md:flex">
           <BrandLogo className="hidden min-w-0 shrink-0 md:flex xl:min-w-[180px]" />

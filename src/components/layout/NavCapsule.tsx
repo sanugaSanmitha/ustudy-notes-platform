@@ -73,13 +73,13 @@ export function NavCapsule({ menuOpen, onMenuClick, className }: NavCapsuleProps
   return (
     <div
       className={cn(
-        'w-max max-w-full min-w-0 rounded-full shadow-[0px_4px_7px_0px_rgba(0,0,0,0.18)]',
+        'inline-flex w-max max-w-full rounded-full shadow-[0px_4px_7px_0px_rgba(0,0,0,0.18)]',
         className
       )}
     >
       <nav
         ref={navRef}
-        className="relative flex h-10 w-full items-stretch overflow-hidden rounded-full bg-[#e8eeff]"
+        className="relative flex h-10 w-max max-w-full items-stretch overflow-hidden rounded-full bg-[#e8eeff]"
       >
       <span
         aria-hidden
@@ -101,12 +101,12 @@ export function NavCapsule({ menuOpen, onMenuClick, className }: NavCapsuleProps
         ref={browserRef}
         href="/"
         className={cn(
-          'relative z-10 flex items-center justify-center gap-1.5 px-3.5 text-[13px] font-medium transition-colors duration-300 max-[420px]:px-2.5',
+          'relative z-10 flex shrink-0 items-center justify-center gap-1 whitespace-nowrap px-2 text-[11px] font-medium transition-colors duration-300 max-[380px]:px-1.5',
           active === 'browser' ? 'text-white' : 'text-black'
         )}
       >
-        <BookOpen className="size-4 shrink-0 stroke-[1.75]" />
-        <span className="max-[420px]:hidden">{t('navBrowser')}</span>
+        <BookOpen className="size-3.5 shrink-0 stroke-[1.75]" />
+        <span>{t('navBrowser')}</span>
       </Link>
 
       <Link
@@ -114,12 +114,12 @@ export function NavCapsule({ menuOpen, onMenuClick, className }: NavCapsuleProps
         href="/cart"
         aria-label={t('navCart')}
         className={cn(
-          'relative z-10 flex items-center justify-center gap-1.5 px-3.5 text-[13px] font-medium transition-colors duration-300 max-[420px]:px-2.5',
+          'relative z-10 flex shrink-0 items-center justify-center gap-1 whitespace-nowrap px-2 text-[11px] font-medium transition-colors duration-300 max-[380px]:px-1.5',
           active === 'cart' ? 'text-white' : 'text-black'
         )}
       >
-        <ShoppingCart className="size-4 shrink-0 stroke-[1.75]" />
-        <span className="max-[420px]:hidden">{t('navCart')}</span>
+        <ShoppingCart className="size-3.5 shrink-0 stroke-[1.75]" />
+        <span>{t('navCart')}</span>
         {isLoggedIn && cartItemCount > 0 ? (
           <span
             className={cn(

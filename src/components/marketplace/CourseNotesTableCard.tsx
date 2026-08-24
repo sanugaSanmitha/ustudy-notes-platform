@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { FileText, Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { HoverMarqueeText } from '@/components/ui/HoverMarqueeText';
 import { formatListingDate } from '@/lib/notes/listing-utils';
 import type { EnrichedListing } from '@/lib/notes/marketplace';
 
@@ -10,16 +11,6 @@ type CourseNotesTableCardProps = {
   courseCode: string;
   listings: EnrichedListing[];
 };
-
-function HoverMarqueeText({ text }: { text: string }) {
-  return (
-    <div title={text} className="group/marquee min-w-0 overflow-hidden [container-type:inline-size]">
-      <span className="inline-block max-w-full truncate align-bottom motion-safe:group-hover/marquee:max-w-none motion-safe:group-hover/marquee:overflow-visible motion-safe:group-hover/marquee:text-clip motion-safe:group-hover/marquee:animate-hover-marquee">
-        {text}
-      </span>
-    </div>
-  );
-}
 
 export function CourseNotesTableCard({ courseCode, listings }: CourseNotesTableCardProps) {
   const visible = listings.slice(0, MAX_ROWS);

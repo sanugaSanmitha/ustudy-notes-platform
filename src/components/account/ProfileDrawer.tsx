@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { SCHOOL_OPTIONS, type SchoolOption } from '@/lib/profile/constants';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { HoverMarqueeText } from '@/components/ui/HoverMarqueeText';
 import { UpdatePasswordForm } from '@/components/account/UpdatePasswordForm';
 import { ProfileAvatarButton } from '@/components/account/ProfileAvatarButton';
 import { useLocale } from '@/components/i18n/LocaleProvider';
@@ -376,7 +377,9 @@ export function ProfileDrawer({
                 </div>
                 <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-2">
                   <dt className="text-[#828282]">{t('school')}</dt>
-                  <dd className="truncate text-black">{visibleProfile?.school || (loading ? '…' : '—')}</dd>
+                  <dd className="min-w-0 text-black">
+                    <HoverMarqueeText text={visibleProfile?.school || (loading ? '…' : '—')} />
+                  </dd>
                 </div>
                 <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-2">
                   <dt className="text-[#828282]">{t('memberSince')}</dt>

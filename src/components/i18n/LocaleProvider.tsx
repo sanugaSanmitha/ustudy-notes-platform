@@ -46,18 +46,26 @@ function readClientLocale(): AppLocale {
   return readStoredLocale();
 }
 
-export function LocaleProvider({ children }: { children: React.ReactNode }) {
+export function LocaleProvider({
+  children,
+  initialLocale = DEFAULT_LOCALE,
+}: {
+  children: React.ReactNode;
+  initialLocale?: AppLocale;
+}) {
   const pathname = usePathname();
   const router = useRouter();
-  const [locale, setLocaleState] = useState<AppLocale>(() => readClientLocale());
+  const [locale, setLocaleState] = useState<AppLocale>(initialLocale);
   const englishOnly = isEnglishOnlyPath(pathname);
   const effectiveLocale: AppLocale = englishOnly ? 'en' : locale;
 
   useEffect(() => {
-    const stored = readStoredLocale();
-    setLocaleState(stored);
-    writeLocaleCookie(stored);
-  }, []);
+    const clientLocale = readClientLocale();
+    if (clientLocale !== initialLocale) {
+      setLocaleState(clientLocale);
+    }
+    writeLocaleCookie(clientLocale);
+  }, [initialLocale]);
 
   const setLocale = useCallback(
     (next: AppLocale) => {

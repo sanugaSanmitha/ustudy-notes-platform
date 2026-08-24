@@ -3,8 +3,9 @@
 import { forwardRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Archive, LogIn, Menu, Notebook, ShieldCheck, Upload, UserPlus, X } from 'lucide-react';
+import { Archive, Menu, Notebook, ShieldCheck, Upload, X } from 'lucide-react';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { LocaleToggle } from '@/components/i18n/LocaleToggle';
 import { useSellerNav } from '@/hooks/useSellerNav';
 import { cn } from '@/lib/utils';
 
@@ -34,12 +35,6 @@ export function MobileNavDrawer({ open, onClose, onOpenProfile }: MobileNavDrawe
     { href: '/courses', label: t('navCourses'), icon: Notebook },
     { href: '/profile', label: t('navLocker'), icon: Archive },
     ...(isReviewer ? [{ href: '/admin/support', label: t('navSupport'), icon: ShieldCheck }] : []),
-    ...(!isLoggedIn
-      ? [
-          { href: '/login', label: t('navLogin'), icon: LogIn },
-          { href: '/register', label: t('navRegister'), icon: UserPlus },
-        ]
-      : []),
   ];
 
   if (!open) return null;
@@ -89,6 +84,10 @@ export function MobileNavDrawer({ open, onClose, onOpenProfile }: MobileNavDrawe
                 </Link>
               );
             })}
+          </div>
+
+          <div className="mt-4 px-2">
+            <LocaleToggle variant="inset" className="h-8" />
           </div>
 
           {isLoggedIn && onOpenProfile ? (

@@ -145,7 +145,7 @@ function LoginForm() {
 
   return (
     <AuthSplitShell title={t('authWelcomeTitle')} subtitle={t('authSignInSubtitle')}>
-      <form onSubmit={handleSubmit} className="space-y-2.5">
+      <form onSubmit={handleSubmit} className="space-y-2.5 max-md:landscape:space-y-2">
         <div className="space-y-1">
           <Label htmlFor="email" className={authLabelClassName}>
             {t('authEmail')}
@@ -210,13 +210,13 @@ function LoginForm() {
         </Button>
       </form>
 
-      <div className="mt-3 flex items-center gap-3">
+      <div className="mt-3 flex items-center gap-3 max-md:landscape:mt-2">
         <div className="h-px flex-1 bg-[#c3c6d7]" />
         <span className="text-xs font-semibold tracking-[0.6px] text-[#737686]">{t('authOr')}</span>
         <div className="h-px flex-1 bg-[#c3c6d7]" />
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 space-y-2 max-md:landscape:mt-2 max-md:landscape:space-y-1.5">
         <p className="text-center text-sm leading-5 text-[#505f76]">{t('authNewToUstudy')}</p>
         <Button asChild variant="outline" className={authOutlineButtonClassName}>
           <Link href="/register">{t('authCreateAccount')}</Link>
