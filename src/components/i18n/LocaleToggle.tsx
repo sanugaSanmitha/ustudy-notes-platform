@@ -27,7 +27,7 @@ export function LocaleToggle({
       className={cn(
         'inline-flex shrink-0 items-center rounded-full p-0.5',
         variant === 'standalone' &&
-          'h-8 bg-[#e4eeff] shadow-[0px_2px_4px_0px_rgba(0,0,0,0.12)]',
+          'h-8 bg-[#e4eeff] shadow-[0px_2px_2px_rgba(0,0,0,0.12)]',
         variant === 'inset' && 'h-7 bg-white/75',
         className
       )}

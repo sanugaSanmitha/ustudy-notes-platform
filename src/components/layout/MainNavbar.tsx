@@ -26,13 +26,17 @@ export function MainNavbar() {
   const navLinks = [
     { href: '/', label: t('navBrowser'), icon: BookOpen },
     { href: '/cart', label: t('navCart'), icon: ShoppingCart },
-    {
-      href: sellerNavLink.href,
-      label: t('navUploader'),
-      icon: sellerNavLink.labelKey === 'sellerNotesUpload' ? Upload : ShieldCheck,
-    },
-    { href: '/courses', label: t('navCourses'), icon: Notebook },
-    { href: '/profile', label: t('navLocker'), icon: Archive },
+    ...(isLoggedIn
+      ? [
+          {
+            href: sellerNavLink.href,
+            label: t('navUploader'),
+            icon: sellerNavLink.labelKey === 'sellerNotesUpload' ? Upload : ShieldCheck,
+          },
+          { href: '/courses', label: t('navCourses'), icon: Notebook },
+          { href: '/profile', label: t('navLocker'), icon: Archive },
+        ]
+      : [{ href: '/courses', label: t('navCourses'), icon: Notebook }]),
   ] as const;
 
   const handleCloseProfile = useCallback(() => setProfileOpen(false), []);

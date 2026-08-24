@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AuthIconField } from '@/components/auth/AuthIconField';
@@ -48,6 +49,7 @@ function LoginForm() {
     'none'
   );
   const [failedAttempts, setFailedAttempts] = useState(0);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const hasCredentialError = errorType === 'credentials' || errorType === 'general';
   const hasVerificationError = errorType === 'verification';
@@ -145,7 +147,7 @@ function LoginForm() {
 
   return (
     <AuthSplitShell title={t('authWelcomeTitle')} subtitle={t('authSignInSubtitle')}>
-      <form onSubmit={handleSubmit} className="space-y-2.5 max-md:landscape:space-y-2">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-md:landscape:gap-3">
         <div className="space-y-1">
           <Label htmlFor="email" className={authLabelClassName}>
             {t('authEmail')}
@@ -191,18 +193,29 @@ function LoginForm() {
               </Link>
             ) : null}
           </div>
+          <div className="flex justify-end pt-1">
+            <Link
+              href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}
+              className={cn(
+                'shrink-0 text-xs font-semibold tracking-[0.6px] hover:underline',
+                hasCredentialError || showResetPassword ? 'text-[#d93025]' : 'text-[#004ac6]'
+              )}
+            >
+              {showResetPassword ? t('authResetPassword') : t('authForgotPassword')}
+            </Link>
+          </div>
         </div>
 
-        <div className="flex items-center justify-end">
-          <Link
-            href={`/forgot-password?email=${encodeURIComponent(formData.email.trim())}`}
-            className={cn(
-              'shrink-0 text-xs font-semibold tracking-[0.6px] hover:underline',
-              hasCredentialError || showResetPassword ? 'text-[#d93025]' : 'text-[#004ac6]'
-            )}
-          >
-            {showResetPassword ? t('authResetPassword') : t('authForgotPassword')}
-          </Link>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="remember-me"
+            checked={rememberMe}
+            onCheckedChange={(checked) => setRememberMe(checked === true)}
+            className="size-4 rounded border-[#c3c6d7] data-checked:border-[#004ac6] data-checked:bg-[#004ac6]"
+          />
+          <Label htmlFor="remember-me" className="text-sm font-normal leading-5 text-[#505f76]">
+            {t('authRememberMe')}
+          </Label>
         </div>
 
         <Button type="submit" className={authPrimaryButtonClassName} disabled={loading}>
@@ -210,14 +223,16 @@ function LoginForm() {
         </Button>
       </form>
 
-      <div className="mt-3 flex items-center gap-3 max-md:landscape:mt-2">
+      <div className="my-4 flex items-center gap-4 max-md:landscape:my-3 max-md:landscape:gap-3">
         <div className="h-px flex-1 bg-[#c3c6d7]" />
         <span className="text-xs font-semibold tracking-[0.6px] text-[#737686]">{t('authOr')}</span>
         <div className="h-px flex-1 bg-[#c3c6d7]" />
       </div>
 
-      <div className="mt-3 space-y-2 max-md:landscape:mt-2 max-md:landscape:space-y-1.5">
-        <p className="text-center text-sm leading-5 text-[#505f76]">{t('authNewToUstudy')}</p>
+      <div className="flex flex-col gap-4 max-md:landscape:gap-3">
+        <p className="text-center text-base leading-6 text-[#505f76] max-md:landscape:text-sm max-md:landscape:leading-5">
+          {t('authNewToUstudy')}
+        </p>
         <Button asChild variant="outline" className={authOutlineButtonClassName}>
           <Link href="/register">{t('authCreateAccount')}</Link>
         </Button>

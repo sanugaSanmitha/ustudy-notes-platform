@@ -26,16 +26,18 @@ export function MobileNavDrawer({ open, onClose, onOpenProfile }: MobileNavDrawe
     .map((part) => part[0]?.toUpperCase() || '')
     .join('');
 
-  const drawerLinks = [
-    {
-      href: sellerNavLink.href,
-      label: t('navUploader'),
-      icon: sellerNavLink.labelKey === 'sellerNotesUpload' ? Upload : ShieldCheck,
-    },
-    { href: '/courses', label: t('navCourses'), icon: Notebook },
-    { href: '/profile', label: t('navLocker'), icon: Archive },
-    ...(isReviewer ? [{ href: '/admin/support', label: t('navSupport'), icon: ShieldCheck }] : []),
-  ];
+  const drawerLinks = isLoggedIn
+    ? [
+        {
+          href: sellerNavLink.href,
+          label: t('navUploader'),
+          icon: sellerNavLink.labelKey === 'sellerNotesUpload' ? Upload : ShieldCheck,
+        },
+        { href: '/courses', label: t('navCourses'), icon: Notebook },
+        { href: '/profile', label: t('navLocker'), icon: Archive },
+        ...(isReviewer ? [{ href: '/admin/support', label: t('navSupport'), icon: ShieldCheck }] : []),
+      ]
+    : [{ href: '/courses', label: t('navCourses'), icon: Notebook }];
 
   if (!open) return null;
 
