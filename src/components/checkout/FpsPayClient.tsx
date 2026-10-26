@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, Copy, Loader2 } from 'lucide-react';
+import { CheckCircle2, Copy, Loader2, Paperclip, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { OrderSupportActions } from '@/components/support/OrderSupportActions';
 import { useLocale } from '@/components/i18n/LocaleProvider';
 import { formatHkd } from '@/lib/utils/cart-utils';
 import { cn } from '@/lib/utils';
@@ -23,7 +24,10 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
   const { t } = useLocale();
   const alreadySubmitted = order.status === 'payment_submitted';
   const [bankReference, setBankReference] = useState(order.fpsBankReference || '');
+  const [receiptName, setReceiptName] = useState(order.receiptFilename || '');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [submitted, setSubmitted] = useState(alreadySubmitted);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState<'proxy' | 'ref' | null>(null);
@@ -31,6 +35,14 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
 
   const qrSrc = qrDataUrl || fps.qrImageUrl;
   const amountLabel = formatHkd(order.totalHkd);
+  const supportContext = {
+    page: 'fps_pay',
+    orderId: order.id,
+    paymentReference: order.paymentReference,
+    paymentMethod: 'fps',
+    amount: amountLabel,
+  };
+
   const methods = useMemo(
     () =>
       [
@@ -56,10 +68,51 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
     window.setTimeout(() => setCopied(null), 1500);
   };
 
+  const uploadReceipt = async (file: File) => {
+    setUploadingReceipt(true);
+    setError('');
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const response = await fetch(`/api/orders/${order.id}/receipt`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error?.message || t('fpsReceiptUploadFailed'));
+      }
+      setReceiptName(payload.receipt?.filename || file.name);
+      setReceiptFile(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('fpsReceiptUploadFailed'));
+      throw err;
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
+  const handleReceiptPick = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file) return;
+    setReceiptFile(file);
+    try {
+      await uploadReceipt(file);
+    } catch {
+      // error already set
+    }
+  };
+
   const handleSubmit = async () => {
     setSubmitting(true);
     setError('');
     try {
+      if (receiptFile && !receiptName) {
+        await uploadReceipt(receiptFile);
+      }
+
       const response = await fetch(`/api/orders/${order.id}/fps-submit`, {
         method: 'POST',
         credentials: 'same-origin',
@@ -91,7 +144,13 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
             .replace('{reference}', order.paymentReference)}
         </p>
         <p className="mt-2 text-sm text-slate-500">{t('fpsPaymentSubmittedHint')}</p>
-        <Button asChild className="mt-8 bg-[#1f2f66] hover:bg-[#18244f]">
+        {receiptName ? (
+          <p className="mt-2 text-xs text-slate-500">
+            {t('fpsReceiptAttached')}: {receiptName}
+          </p>
+        ) : null}
+        <OrderSupportActions context={supportContext} className="mt-6" compact />
+        <Button asChild className="mt-6 bg-[#1f2f66] hover:bg-[#18244f]">
           <Link href="/profile/orders">{t('fpsViewOrderStatus')}</Link>
         </Button>
       </Card>
@@ -229,6 +288,41 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
 
       <Card className="space-y-4 p-5">
         <div>
+          <Label htmlFor="fps-receipt">{t('fpsReceiptLabel')}</Label>
+          <p className="mt-1 text-xs text-slate-500">{t('fpsReceiptHint')}</p>
+          <label
+            htmlFor="fps-receipt"
+            className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700 hover:bg-slate-100"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              {uploadingReceipt ? (
+                <Loader2 className="size-4 shrink-0 animate-spin" />
+              ) : receiptName ? (
+                <Paperclip className="size-4 shrink-0 text-emerald-600" />
+              ) : (
+                <Upload className="size-4 shrink-0" />
+              )}
+              <span className="truncate">
+                {uploadingReceipt
+                  ? t('fpsReceiptUploading')
+                  : receiptName
+                    ? receiptName
+                    : t('fpsReceiptChoose')}
+              </span>
+            </span>
+            <span className="shrink-0 text-xs font-medium text-[#1f2f66]">{t('fpsReceiptBrowse')}</span>
+          </label>
+          <input
+            id="fps-receipt"
+            type="file"
+            accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"
+            className="sr-only"
+            onChange={handleReceiptPick}
+            disabled={uploadingReceipt || submitting}
+          />
+        </div>
+
+        <div>
           <Label htmlFor="fps-ref">{t('fpsBankRefLabel')}</Label>
           <Input
             id="fps-ref"
@@ -239,7 +333,12 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
           />
         </div>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        <Button type="button" className="w-full bg-[#1f2f66] hover:bg-[#18244f]" onClick={handleSubmit} disabled={submitting}>
+        <Button
+          type="button"
+          className="w-full bg-[#1f2f66] hover:bg-[#18244f]"
+          onClick={handleSubmit}
+          disabled={submitting || uploadingReceipt}
+        >
           {submitting ? (
             <>
               <Loader2 className="mr-2 size-4 animate-spin" />
@@ -250,6 +349,7 @@ export function FpsPayClient({ order, fps, qrDataUrl = null }: FpsPayClientProps
           )}
         </Button>
         <p className="text-xs text-slate-500">{t('fpsUnlockHint').replace('{amount}', amountLabel)}</p>
+        <OrderSupportActions context={supportContext} />
       </Card>
     </div>
   );

@@ -50,29 +50,41 @@ export async function sendPasswordResetEmail(
   resetUrl: string
 ) {
   try {
-    await resend.emails.send({
+    const safeUrl = resetUrl.replace(/"/g, '&quot;');
+    const { data, error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: email,
       subject: 'Reset Your Ustudy account Password',
       html: `
         <h2>Password Reset Request</h2>
-        <p>Click the link below to reset your password:</p>
-        <a href="${resetUrl}" style="
-          background-color: #2563EB;
-          color: white;
-          padding: 12px 24px;
-          text-decoration: none;
-          border-radius: 8px;
-          display: inline-block;
-        ">
-          Reset Password
-        </a>
-        <p>This link expires in 1 hour.</p>
+        <p>Click the button below to reset your password:</p>
+        <p style="margin: 24px 0;">
+          <a href="${safeUrl}" style="
+            background-color: #2563EB;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 8px;
+            display: inline-block;
+          ">
+            Reset Password
+          </a>
+        </p>
+        <p style="font-size: 13px; color: #64748B; word-break: break-all;">
+          Or paste this link into your browser:<br />
+          <a href="${safeUrl}">${safeUrl}</a>
+        </p>
+        <p>This link expires in 1 hour and can only be used once.</p>
         <p>If you didn't request this, ignore this email.</p>
       `,
     });
 
-    return { success: true };
+    if (error) {
+      console.error('Password reset email send error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, data };
   } catch (error) {
     console.error('Email send error:', error);
     return { success: false, error };

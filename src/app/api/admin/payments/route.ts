@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdminUser } from '@/lib/grades/admin';
 import { adminClient } from '@/lib/supabase/admin';
+import { createOrderReceiptSignedUrl } from '@/lib/payments/receipt-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export async function GET() {
   const { data, error } = await adminClient
     .from('orders')
     .select(
-      'id, status, payment_method, payment_reference, fps_bank_reference, payment_submitted_at, total_hkd, created_at, user_id, order_items ( title, course_code )'
+      'id, status, payment_method, payment_reference, fps_bank_reference, payment_submitted_at, total_hkd, created_at, user_id, receipt_filename, receipt_storage_bucket, receipt_storage_path, receipt_uploaded_at, order_items ( title, course_code )'
     )
     .eq('payment_method', 'fps')
     .in('status', ['pending', 'payment_submitted'])
@@ -37,20 +38,30 @@ export async function GET() {
   const waiting = rows.filter((row) => row.status === 'pending');
   const ordered = [...submitted, ...waiting];
 
-  const orders = ordered.map((row) => {
-    const items = (Array.isArray(row.order_items) ? row.order_items : []) as OrderItemRow[];
-    return {
-      id: row.id,
-      status: row.status,
-      paymentReference: row.payment_reference,
-      fpsBankReference: row.fps_bank_reference,
-      paymentSubmittedAt: row.payment_submitted_at,
-      totalHkd: Number(row.total_hkd),
-      createdAt: row.created_at,
-      studentEmail: emailById.get(row.user_id) || 'Unknown student',
-      items: items.map((item) => `${item.course_code} — ${item.title}`),
-    };
-  });
+  const orders = await Promise.all(
+    ordered.map(async (row) => {
+      const items = (Array.isArray(row.order_items) ? row.order_items : []) as OrderItemRow[];
+      const receiptUrl = await createOrderReceiptSignedUrl(
+        row.receipt_storage_bucket,
+        row.receipt_storage_path,
+        1800
+      );
+      return {
+        id: row.id,
+        status: row.status,
+        paymentReference: row.payment_reference,
+        fpsBankReference: row.fps_bank_reference,
+        paymentSubmittedAt: row.payment_submitted_at,
+        totalHkd: Number(row.total_hkd),
+        createdAt: row.created_at,
+        studentEmail: emailById.get(row.user_id) || 'Unknown student',
+        items: items.map((item) => `${item.course_code} — ${item.title}`),
+        receiptFilename: row.receipt_filename,
+        receiptUploadedAt: row.receipt_uploaded_at,
+        receiptUrl,
+      };
+    })
+  );
 
   return NextResponse.json({ orders });
 }

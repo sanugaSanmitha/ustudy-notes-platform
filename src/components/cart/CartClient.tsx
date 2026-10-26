@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { useCart } from '@/hooks/useCart';
 import { useSellerNav } from '@/hooks/useSellerNav';
 import { useLocale } from '@/components/i18n/LocaleProvider';
+import { CartSupportCard } from '@/components/support/CartSupportCard';
 import { formatHkd } from '@/lib/utils/cart-utils';
 import { CART_COUNT_COOKIE } from '@/lib/auth/nav-cookies';
 import { cn } from '@/lib/utils';
@@ -80,6 +81,9 @@ export function CartClient({ initialCart = null }: { initialCart?: CartSummary |
         <Button asChild className="mt-6 bg-blue-600 hover:bg-blue-700">
           <Link href="/courses">{t('cartBrowseNotes')}</Link>
         </Button>
+        <div className="mt-4 w-full max-w-sm">
+          <CartSupportCard />
+        </div>
       </Card>
     );
   }
@@ -161,6 +165,8 @@ export function CartClient({ initialCart = null }: { initialCart?: CartSummary |
         <Button asChild className="mt-6 w-full bg-blue-600 hover:bg-blue-700">
           <Link href="/checkout">{t('cartCheckout')}</Link>
         </Button>
+
+        <CartSupportCard itemCount={cart.itemCount} totalHkd={cart.totalHkd} />
       </Card>
     </div>
   );

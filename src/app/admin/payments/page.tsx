@@ -19,6 +19,9 @@ type FpsOrder = {
   createdAt: string;
   studentEmail: string;
   items: string[];
+  receiptFilename: string | null;
+  receiptUploadedAt: string | null;
+  receiptUrl: string | null;
 };
 
 export default function AdminPaymentsPage() {
@@ -100,6 +103,7 @@ export default function AdminPaymentsPage() {
                 <th className="px-4 py-3">Student</th>
                 <th className="px-4 py-3">Amount</th>
                 <th className="px-4 py-3">Bank ref</th>
+                <th className="px-4 py-3">Receipt</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Action</th>
               </tr>
@@ -114,6 +118,20 @@ export default function AdminPaymentsPage() {
                   <td className="px-4 py-3 text-slate-700">{order.studentEmail}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">{formatHkd(order.totalHkd)}</td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-600">{order.fpsBankReference || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">
+                    {order.receiptUrl ? (
+                      <a
+                        href={order.receiptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-blue-700 hover:underline"
+                      >
+                        {order.receiptFilename || 'View receipt'}
+                      </a>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={cn(

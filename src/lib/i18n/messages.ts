@@ -259,6 +259,14 @@ export type MessageKey =
   | 'cartBuy3Get1Free'
   | 'cartFree'
   | 'cartRemoveFailed'
+  | 'supportNeedHelp'
+  | 'supportCartHint'
+  | 'supportChatWithUs'
+  | 'supportWhatsapp'
+  | 'supportWechat'
+  | 'supportOrderHint'
+  | 'supportWhatsappCartMessage'
+  | 'supportWhatsappOrderMessage'
   | 'completeProfileTitle'
   | 'completeProfileWelcome'
   | 'completeProfileSubtitle'
@@ -320,6 +328,13 @@ export type MessageKey =
   | 'fpsCompletedPayment'
   | 'fpsUnlockHint'
   | 'fpsSubmitFailed'
+  | 'fpsReceiptLabel'
+  | 'fpsReceiptHint'
+  | 'fpsReceiptChoose'
+  | 'fpsReceiptBrowse'
+  | 'fpsReceiptUploading'
+  | 'fpsReceiptUploadFailed'
+  | 'fpsReceiptAttached'
   | 'checkoutSuccessTitle'
   | 'checkoutSuccessBody'
   | 'checkoutSuccessOrderId'
@@ -622,6 +637,15 @@ const en: Record<MessageKey, string> = {
   cartBuy3Get1Free: 'Buy 3 get 1 free',
   cartFree: 'Free',
   cartRemoveFailed: 'Failed to remove item',
+  supportNeedHelp: 'Need help?',
+  supportCartHint: 'Chat with us about checkout, FPS payment, or uploading your receipt.',
+  supportChatWithUs: 'Chat with us',
+  supportWhatsapp: 'WhatsApp',
+  supportWechat: 'WeChat ID',
+  supportOrderHint: 'Prefer chat? We already know this order when you open support.',
+  supportWhatsappCartMessage: 'Hi uStudy — I need help with my cart ({count} items, {total}).',
+  supportWhatsappOrderMessage:
+    'Hi uStudy — I need help with FPS order {orderId} (ref {reference}, {amount}).',
   completeProfileTitle: 'Complete Your Profile',
   completeProfileWelcome: 'Welcome to UStudy!',
   completeProfileSubtitle: 'Please complete your profile before continuing.',
@@ -683,6 +707,13 @@ const en: Record<MessageKey, string> = {
   fpsCompletedPayment: "I've completed payment",
   fpsUnlockHint: 'Clicking this does not unlock notes. We unlock them after {amount} shows up in the bank.',
   fpsSubmitFailed: 'Failed to submit payment.',
+  fpsReceiptLabel: 'Upload payment receipt',
+  fpsReceiptHint: 'PDF or screenshot of your FPS transfer. Stored on this order for admin review.',
+  fpsReceiptChoose: 'Choose PDF or image…',
+  fpsReceiptBrowse: 'Browse',
+  fpsReceiptUploading: 'Uploading receipt…',
+  fpsReceiptUploadFailed: 'Failed to upload receipt.',
+  fpsReceiptAttached: 'Receipt uploaded',
   checkoutSuccessTitle: 'Payment successful',
   checkoutSuccessBody: 'Your order has been placed. Purchased notes will appear in your account once payment is confirmed.',
   checkoutSuccessOrderId: 'Order ID:',
@@ -982,6 +1013,14 @@ const zhCN: Record<MessageKey, string> = {
   cartBuy3Get1Free: '买 3 送 1',
   cartFree: '免费',
   cartRemoveFailed: '无法移除商品',
+  supportNeedHelp: '需要帮助？',
+  supportCartHint: '可咨询结账、FPS 付款或上传付款凭证。',
+  supportChatWithUs: '在线客服',
+  supportWhatsapp: 'WhatsApp',
+  supportWechat: '微信 ID',
+  supportOrderHint: '需要聊天？打开客服时我们已知道此订单信息。',
+  supportWhatsappCartMessage: '你好 uStudy — 我需要购物车帮助（{count} 件，{total}）。',
+  supportWhatsappOrderMessage: '你好 uStudy — 我需要 FPS 订单 {orderId} 帮助（参考号 {reference}，{amount}）。',
   completeProfileTitle: '完善您的资料',
   completeProfileWelcome: '欢迎使用 UStudy！',
   completeProfileSubtitle: '请先完善资料后再继续。',
@@ -1043,6 +1082,13 @@ const zhCN: Record<MessageKey, string> = {
   fpsCompletedPayment: '我已完成付款',
   fpsUnlockHint: '点击此按钮不会解锁笔记。我们在银行收到 {amount} 后才会解锁。',
   fpsSubmitFailed: '无法提交付款。',
+  fpsReceiptLabel: '上传付款凭证',
+  fpsReceiptHint: 'FPS 转账的 PDF 或截图，将保存在此订单供管理员核对。',
+  fpsReceiptChoose: '选择 PDF 或图片…',
+  fpsReceiptBrowse: '浏览',
+  fpsReceiptUploading: '正在上传凭证…',
+  fpsReceiptUploadFailed: '无法上传付款凭证。',
+  fpsReceiptAttached: '已上传凭证',
   checkoutSuccessTitle: '付款成功',
   checkoutSuccessBody: '订单已提交。付款确认后，购买的笔记将出现在您的账户中。',
   checkoutSuccessOrderId: '订单号：',
