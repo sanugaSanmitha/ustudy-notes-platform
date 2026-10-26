@@ -3,16 +3,10 @@ import { z } from 'zod';
 import { adminClient } from '@/lib/supabase/admin';
 import { isValidEmail } from '@/lib/auth/utils';
 import { sendPasswordResetEmail } from '@/lib/email/resend';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { enforceRateLimit } from '@/lib/api/rate-limit';
 
 const schema = z.object({
   email: z.string().email(),
-});
-
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(10, '1 h'),
 });
 
 function getClientIp(request: NextRequest) {
@@ -54,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const ip = getClientIp(request);
-    const { success } = await ratelimit.limit(`forgot-password:${email}:${ip}`);
+    const { success } = await enforceRateLimit(`forgot-password:${email}:${ip}`, 10, '1 h');
     if (!success) {
       return NextResponse.json(
         { error: { code: 'RATE_LIMIT', message: 'Too many reset requests. Try again later.' } },

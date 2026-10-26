@@ -1,13 +1,26 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const EMAIL_FROM = 'UStudy <noreply@mail.ustudy.dev>';
+
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+  return new Resend(apiKey);
+}
 
 export async function sendVerificationEmail(
   email: string,
   token: string
 ) {
   try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.error('Email send error: RESEND_API_KEY is not configured');
+      return { success: false, error: new Error('RESEND_API_KEY is not configured') };
+    }
+
     const { data, error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: email,
@@ -50,6 +63,12 @@ export async function sendPasswordResetEmail(
   resetUrl: string
 ) {
   try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.error('Password reset email send error: RESEND_API_KEY is not configured');
+      return { success: false, error: new Error('RESEND_API_KEY is not configured') };
+    }
+
     const safeUrl = resetUrl.replace(/"/g, '&quot;');
     const { data, error } = await resend.emails.send({
       from: EMAIL_FROM,
@@ -106,6 +125,12 @@ type AdminReviewEmailPayload = {
 
 export async function sendAdminReviewRequestEmail(payload: AdminReviewEmailPayload) {
   try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.error('Admin review email send error: RESEND_API_KEY is not configured');
+      return { success: false, error: new Error('RESEND_API_KEY is not configured') };
+    }
+
     const { error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: payload.adminEmail,
@@ -169,6 +194,12 @@ type VerificationOutcomeEmailPayload = {
 
 export async function sendGradeVerificationApprovedEmail(payload: VerificationOutcomeEmailPayload) {
   try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.error('Verification approved email error: RESEND_API_KEY is not configured');
+      return { success: false, error: new Error('RESEND_API_KEY is not configured') };
+    }
+
     const { error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: payload.studentEmail,
@@ -201,6 +232,12 @@ export async function sendGradeVerificationApprovedEmail(payload: VerificationOu
 
 export async function sendGradeVerificationRejectedEmail(payload: VerificationOutcomeEmailPayload) {
   try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.error('Verification rejected email error: RESEND_API_KEY is not configured');
+      return { success: false, error: new Error('RESEND_API_KEY is not configured') };
+    }
+
     const { error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: payload.studentEmail,
@@ -243,6 +280,12 @@ type NoteListingOutcomeEmailPayload = {
 
 export async function sendNoteListingApprovedEmail(payload: NoteListingOutcomeEmailPayload) {
   try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.error('Note listing approved email error: RESEND_API_KEY is not configured');
+      return { success: false, error: new Error('RESEND_API_KEY is not configured') };
+    }
+
     const { error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: payload.sellerEmail,
@@ -274,6 +317,12 @@ export async function sendNoteListingApprovedEmail(payload: NoteListingOutcomeEm
 
 export async function sendNoteListingRejectedEmail(payload: NoteListingOutcomeEmailPayload) {
   try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.error('Note listing rejected email error: RESEND_API_KEY is not configured');
+      return { success: false, error: new Error('RESEND_API_KEY is not configured') };
+    }
+
     const { error } = await resend.emails.send({
       from: EMAIL_FROM,
       to: payload.sellerEmail,

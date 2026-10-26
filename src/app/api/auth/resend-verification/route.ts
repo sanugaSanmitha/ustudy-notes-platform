@@ -7,16 +7,10 @@ import {
   replaceVerificationToken,
   resolveUserForVerification,
 } from '@/lib/auth/verification';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { enforceRateLimit } from '@/lib/api/rate-limit';
 
 const schema = z.object({
   email: z.string().email(),
-});
-
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(3, '1 d'),
 });
 
 function resendResponse(message?: string, options?: { tokenIssuedAt?: string }) {
@@ -48,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(resendResponse(), { status: 200 });
     }
 
-    const { success } = await ratelimit.limit(`resend:${email}`);
+    const { success } = await enforceRateLimit(`resend:${email}`, 3, '1 d');
     if (!success) {
       return NextResponse.json(
         { error: { code: 'RATE_LIMIT', message: 'Too many resend attempts. Try again tomorrow.' } },

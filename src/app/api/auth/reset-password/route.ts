@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 import { createClient } from '@/lib/supabase/server';
 import { isValidPassword } from '@/lib/auth/utils';
+import { enforceRateLimit } from '@/lib/api/rate-limit';
 
 const resetPasswordSchema = z
   .object({
@@ -16,11 +15,6 @@ const resetPasswordSchema = z
     message: 'New password and confirmation do not match',
     path: ['confirmPassword'],
   });
-
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(5, '15 m'),
-});
 
 function getClientIp(request: NextRequest) {
   return (
@@ -48,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     const ip = getClientIp(request);
     const limitKey = `reset-password:${user.id}:${ip}`;
-    const { success } = await ratelimit.limit(limitKey);
+    const { success } = await enforceRateLimit(limitKey, 5, '15 m');
     if (!success) {
       return NextResponse.json(
         {
