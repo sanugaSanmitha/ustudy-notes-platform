@@ -105,14 +105,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
-    const redirectTo = `${appUrl}/update-password`;
+    // Build an app-hosted recovery URL with hashed_token.
+    // Do NOT email Supabase action_link: with PKCE it redirects with ?code=
+    // but no code_verifier exists in the user's browser, so reset always fails.
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/$/, '');
 
     const { data: linkData, error: generateLinkError } = await adminClient.auth.admin.generateLink({
       type: 'recovery',
       email,
       options: {
-        redirectTo,
+        redirectTo: `${appUrl}/update-password`,
       },
     });
 
@@ -124,14 +126,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const resetUrl = linkData?.properties?.action_link;
-
-    if (!resetUrl) {
+    const hashedToken = linkData?.properties?.hashed_token;
+    if (!hashedToken) {
       return NextResponse.json(
         { error: { code: 'TOKEN_ERROR', message: 'Failed to generate password reset link' } },
         { status: 500 }
       );
     }
+
+    const resetUrl = `${appUrl}/update-password?token_hash=${encodeURIComponent(hashedToken)}&type=recovery`;
 
     if (isDev) {
       console.log(`\n[DEV] Password reset link for ${email}:\n${resetUrl}\n`);

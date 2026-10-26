@@ -48,11 +48,24 @@ function UpdatePasswordForm() {
 
   useEffect(() => {
     const supabase = createClient();
+    let cancelled = false;
 
     const checkRecoveryState = async () => {
+      const tokenHash = searchParams.get('token_hash');
+      const type = searchParams.get('type');
       const code = searchParams.get('code');
 
-      if (code) {
+      // Preferred path for custom reset emails (hashed_token + verifyOtp).
+      if (tokenHash && type === 'recovery') {
+        const { error: otpError } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: 'recovery',
+        });
+        if (otpError) {
+          console.error('Recovery token verify error:', otpError);
+        }
+      } else if (code) {
+        // Legacy / Supabase-hosted redirect fallback (rarely works without PKCE verifier).
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) {
           console.error('Recovery code exchange error:', exchangeError);
@@ -75,6 +88,8 @@ function UpdatePasswordForm() {
         }
       }
 
+      if (cancelled) return;
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -86,14 +101,11 @@ function UpdatePasswordForm() {
         const cleanedUrl = new URL(window.location.href);
         let shouldReplaceUrl = false;
 
-        if (cleanedUrl.searchParams.has('code')) {
-          cleanedUrl.searchParams.delete('code');
-          shouldReplaceUrl = true;
-        }
-
-        if (cleanedUrl.searchParams.has('type')) {
-          cleanedUrl.searchParams.delete('type');
-          shouldReplaceUrl = true;
+        for (const key of ['code', 'type', 'token_hash']) {
+          if (cleanedUrl.searchParams.has(key)) {
+            cleanedUrl.searchParams.delete(key);
+            shouldReplaceUrl = true;
+          }
         }
 
         if (cleanedUrl.hash) {
@@ -112,6 +124,7 @@ function UpdatePasswordForm() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
       if (event === 'PASSWORD_RECOVERY') {
         setHasRecoverySession(true);
       } else {
@@ -121,6 +134,7 @@ function UpdatePasswordForm() {
     });
 
     return () => {
+      cancelled = true;
       subscription.unsubscribe();
     };
   }, [searchParams]);
