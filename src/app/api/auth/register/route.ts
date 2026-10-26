@@ -12,8 +12,7 @@ import {
   replaceVerificationToken,
   resolveUserForVerification,
 } from '@/lib/auth/verification';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { enforceRateLimit } from '@/lib/api/rate-limit';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -31,12 +30,6 @@ function registrationResponse(options?: { message?: string; tokenIssuedAt?: stri
   };
 }
 
-// Rate limit: 5 registrations per IP/email per hour
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(5, '1 h'),
-});
-
 function getClientIp(request: NextRequest) {
   return (
     request.headers.get('x-vercel-forwarded-for') ||
@@ -50,7 +43,7 @@ export async function POST(request: NextRequest) {
   try {
     // Rate limiting
     const ip = getClientIp(request);
-    const { success } = await ratelimit.limit(`register:${ip}`);
+    const { success } = await enforceRateLimit(`register:${ip}`, 5, '1 h');
 
     if (!success) {
       return NextResponse.json(
@@ -74,7 +67,11 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = email.toLowerCase();
     const isDev = process.env.NODE_ENV !== 'production';
 
-    const { success: emailLimitSuccess } = await ratelimit.limit(`register-email:${normalizedEmail}`);
+    const { success: emailLimitSuccess } = await enforceRateLimit(
+      `register-email:${normalizedEmail}`,
+      5,
+      '1 h'
+    );
     if (!emailLimitSuccess) {
       return NextResponse.json(
         { error: { code: 'RATE_LIMIT', message: 'Too many registration attempts. Try again later.' } },
