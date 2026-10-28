@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { uploadOrderReceipt } from '@/lib/payments/receipt-storage';
+import { enforceRateLimit, rateLimitResponse } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,11 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   if (authError || !user) {
     return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, { status: 401 });
+  }
+
+  const { success: receiptLimitOk } = await enforceRateLimit(`order-receipt:${user.id}`, 10, '1 h');
+  if (!receiptLimitOk) {
+    return rateLimitResponse('Too many receipt uploads. Try again later.');
   }
 
   const { data: order, error: orderError } = await adminClient

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
 import { getCartSummary } from '@/lib/cart/repository';
 import { makePaymentReference, markOrderPaid } from '@/lib/orders/fulfill';
+import { enforceRateLimit, rateLimitResponse } from '@/lib/api/rate-limit';
 import type { PaymentMethod } from '@/types/cart';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +23,11 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user?.email) {
       return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, { status: 401 });
+    }
+
+    const { success: orderLimitOk } = await enforceRateLimit(`orders:${user.id}`, 15, '1 h');
+    if (!orderLimitOk) {
+      return rateLimitResponse('Too many checkout attempts. Try again later.');
     }
 
     const body = await request.json();

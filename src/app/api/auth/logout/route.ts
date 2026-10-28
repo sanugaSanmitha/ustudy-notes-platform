@@ -6,6 +6,7 @@ import {
   DISPLAY_NAME_COOKIE,
   PROFILE_COMPLETE_COOKIE,
   SELLER_COOKIE,
+  navCookieOptions,
 } from '@/lib/auth/nav-cookies';
 
 export async function POST() {
@@ -17,7 +18,7 @@ export async function POST() {
       { data: { success: true } },
       { status: 200 }
     );
-    const expired = { path: '/', maxAge: 0 };
+    const expired = { ...navCookieOptions(), maxAge: 0 };
     response.cookies.set(PROFILE_COMPLETE_COOKIE, '', expired);
     response.cookies.set(SELLER_COOKIE, '', expired);
     response.cookies.set(DISPLAY_NAME_COOKIE, '', expired);

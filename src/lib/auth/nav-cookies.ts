@@ -12,6 +12,7 @@ export function navCookieOptions(): CookieOptions {
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 30,
     httpOnly: true,
+    secure: process.env.VERCEL === '1',
   };
 }
 

@@ -6,6 +6,7 @@ import { adminClient } from '@/lib/supabase/admin';
 import { uploadTranscriptFile } from '@/lib/grades/transcript-storage';
 import { isMaterialLocked } from '@/lib/materials/lock';
 import { formatMaterialReuploadWindowLabel } from '@/lib/materials/config';
+import { enforceRateLimit, rateLimitResponse } from '@/lib/api/rate-limit';
 
 const MAX_ZIP_BYTES = 500 * 1024 * 1024;
 
@@ -34,6 +35,11 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, { status: 401 });
+    }
+
+    const { success: uploadLimitOk } = await enforceRateLimit(`notes-upload:${user.id}`, 8, '1 h');
+    if (!uploadLimitOk) {
+      return rateLimitResponse('Too many note uploads. Try again later.');
     }
 
     const { data: profile, error: profileError } = await adminClient

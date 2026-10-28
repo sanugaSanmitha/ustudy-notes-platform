@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { adminClient } from '@/lib/supabase/admin';
+import { enforceRateLimit, rateLimitResponse } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,11 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   if (authError || !user) {
     return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, { status: 401 });
+  }
+
+  const { success: submitLimitOk } = await enforceRateLimit(`fps-submit:${user.id}`, 10, '1 h');
+  if (!submitLimitOk) {
+    return rateLimitResponse('Too many payment submissions. Try again later.');
   }
 
   const body = await request.json().catch(() => ({}));

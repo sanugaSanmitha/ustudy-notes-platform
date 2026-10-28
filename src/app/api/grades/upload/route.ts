@@ -12,6 +12,7 @@ import {
   fetchVerifiedCourseCodeSet,
   filterCoursesNotAlreadyVerified,
 } from '@/lib/grades/verified-courses';
+import { enforceRateLimit, rateLimitResponse } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +138,11 @@ export async function POST(request: NextRequest) {
         { error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } },
         { status: 401 }
       );
+    }
+
+    const { success: uploadLimitOk } = await enforceRateLimit(`grades-upload:${user.id}`, 6, '1 h');
+    if (!uploadLimitOk) {
+      return rateLimitResponse('Too many transcript uploads. Try again later.');
     }
 
     const profileResult = await ensureUserProfile(user);

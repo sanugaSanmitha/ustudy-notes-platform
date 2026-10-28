@@ -6,6 +6,7 @@ import { getGradeTier } from '@/lib/materials/grade-tiers';
 import { formatMaterialReuploadWindowLabel } from '@/lib/materials/config';
 import { isMaterialLocked, REUPLOAD_WINDOW_MS } from '@/lib/materials/lock';
 import { extractZipFileNames } from '@/lib/materials/zip-preview';
+import { enforceRateLimit, rateLimitResponse } from '@/lib/api/rate-limit';
 
 const MAX_ZIP_BYTES = 100 * 1024 * 1024;
 
@@ -21,6 +22,11 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, { status: 401 });
+    }
+
+    const { success: uploadLimitOk } = await enforceRateLimit(`materials-upload:${user.id}`, 8, '1 h');
+    if (!uploadLimitOk) {
+      return rateLimitResponse('Too many material uploads. Try again later.');
     }
 
     const { data: profile, error: profileError } = await adminClient

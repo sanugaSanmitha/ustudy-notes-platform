@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server';
 import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
@@ -53,4 +54,11 @@ export async function enforceRateLimit(
     console.error('Rate limit error (failing open):', error);
     return { success: true };
   }
+}
+
+export function rateLimitResponse(message = 'Too many requests. Try again later.') {
+  return NextResponse.json(
+    { error: { code: 'RATE_LIMIT', message } },
+    { status: 429 }
+  );
 }

@@ -23,6 +23,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: getMessage(locale, 'metaTitle'),
     description: getMessage(locale, 'metaDescription'),
+    icons: {
+      icon: [{ url: '/brand/ustudy-logo.png', type: 'image/png' }],
+      apple: [{ url: '/brand/ustudy-logo.png', type: 'image/png' }],
+    },
   };
 }
 
